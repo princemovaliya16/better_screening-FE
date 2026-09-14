@@ -1,3 +1,4 @@
+export * from './Avatar';
 export * from './Badge';
 export * from './Button';
 export * from './Card';
@@ -6,5 +7,7 @@ export * from './icons';
 export * from './Input';
 export * from './Logo';
 export * from './Modal';
+export * from './Ring';
 export * from './Select';
 export * from './Textarea';
+export * from './Toggle';

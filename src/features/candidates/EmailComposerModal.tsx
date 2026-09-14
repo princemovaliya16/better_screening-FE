@@ -15,30 +15,57 @@ export function EmailComposerModal({
   onClose,
   candidateId,
   interviews,
+  defaultType = 'followup',
 }: {
   open: boolean;
   onClose: () => void;
   candidateId: string;
   interviews?: Interview[];
+  defaultType?: EmailType;
+}) {
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Compose email"
+      subtitle="Drafted with AI — review and edit before sending."
+      size="lg"
+    >
+      {/* Keyed on defaultType so switching context (e.g. "Send offer" vs "Send
+          rejection") remounts the form with fresh state instead of carrying over
+          the previous email type/draft — Modal already unmounts this entirely
+          on close, so it also starts clean on every open. */}
+      <EmailComposerForm
+        key={defaultType}
+        onClose={onClose}
+        candidateId={candidateId}
+        interviews={interviews}
+        defaultType={defaultType}
+      />
+    </Modal>
+  );
+}
+
+function EmailComposerForm({
+  onClose,
+  candidateId,
+  interviews,
+  defaultType,
+}: {
+  onClose: () => void;
+  candidateId: string;
+  interviews?: Interview[];
+  defaultType: EmailType;
 }) {
   const { organization } = useOrg();
   const queryClient = useQueryClient();
 
-  const [type, setType] = useState<EmailType>('followup');
+  const [type, setType] = useState<EmailType>(defaultType);
   const [interviewId, setInterviewId] = useState('');
   const [guidance, setGuidance] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [drafted, setDrafted] = useState(false);
-
-  const reset = () => {
-    setType('followup');
-    setInterviewId('');
-    setGuidance('');
-    setSubject('');
-    setBody('');
-    setDrafted(false);
-  };
 
   const composeMutation = useMutation({
     mutationFn: () =>
@@ -58,113 +85,94 @@ export function EmailComposerModal({
     mutationFn: () => emailComposerApi.send(candidateId, { type, subject, body }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.candidateEmails(organization?.id ?? '', candidateId) });
-      reset();
       onClose();
     },
   });
 
   return (
-    <Modal
-      open={open}
-      onClose={() => {
-        reset();
-        onClose();
-      }}
-      title="Compose email"
-      subtitle="Drafted with AI — review and edit before sending."
-      size="lg"
-    >
-      <div className="p-5 space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Email type">
-            <Select value={type} onChange={(e) => setType(e.target.value as EmailType)}>
-              {EMAIL_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {EMAIL_TYPE_LABELS[t]}
+    <div className="p-5 space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="Email type">
+          <Select value={type} onChange={(e) => setType(e.target.value as EmailType)}>
+            {EMAIL_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {EMAIL_TYPE_LABELS[t]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {interviews && interviews.length > 0 && (
+          <Field label="Related interview (optional)">
+            <Select value={interviewId} onChange={(e) => setInterviewId(e.target.value)}>
+              <option value="">None</option>
+              {interviews.map((iv) => (
+                <option key={iv.id} value={iv.id}>
+                  {iv.roundName}
                 </option>
               ))}
             </Select>
           </Field>
-          {interviews && interviews.length > 0 && (
-            <Field label="Related interview (optional)">
-              <Select value={interviewId} onChange={(e) => setInterviewId(e.target.value)}>
-                <option value="">None</option>
-                {interviews.map((iv) => (
-                  <option key={iv.id} value={iv.id}>
-                    {iv.roundName}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          )}
-        </div>
-        <Field label="Guidance for the AI (optional)">
-          <Input
-            placeholder="e.g. mention we loved her portfolio"
-            value={guidance}
-            onChange={(e) => setGuidance(e.target.value)}
-          />
-        </Field>
-        <div className="flex justify-end gap-2.5">
-          {!drafted && (
-            <Button type="button" variant="secondary" size="sm" onClick={() => setDrafted(true)}>
-              Compose manually
-            </Button>
-          )}
-          <Button
-            type="button"
-            variant="ai"
-            size="sm"
-            loading={composeMutation.isPending}
-            onClick={() => composeMutation.mutate()}
-          >
-            {drafted ? '✨ Regenerate draft' : '✨ Compose with AI'}
-          </Button>
-        </div>
-        {composeMutation.isError && (
-          <p className="text-[13px] text-rose-500">Couldn't generate a draft. Try again.</p>
         )}
-
-        {drafted && (
-          <div className="space-y-3 pt-2 border-t border-ink-100">
-            <Field label="Subject">
-              <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
-            </Field>
-            <Field label="Body">
-              <Textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)} />
-            </Field>
-          </div>
-        )}
-
-        {sendMutation.isError && (
-          <p className="text-[13px] text-rose-500">
-            {sendMutation.error instanceof ApiError
-              ? sendMutation.error.message
-              : "Couldn't send the email. Try again."}
-          </p>
-        )}
-
-        <div className="flex items-center justify-end gap-2.5 pt-2">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => {
-              reset();
-              onClose();
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            disabled={!drafted || !subject.trim() || !body.trim()}
-            loading={sendMutation.isPending}
-            onClick={() => sendMutation.mutate()}
-          >
-            Send email
-          </Button>
-        </div>
       </div>
-    </Modal>
+      <Field label="Guidance for the AI (optional)">
+        <Input
+          placeholder="e.g. mention we loved her portfolio"
+          value={guidance}
+          onChange={(e) => setGuidance(e.target.value)}
+        />
+      </Field>
+      <div className="flex justify-end gap-2.5">
+        {!drafted && (
+          <Button type="button" variant="secondary" size="sm" onClick={() => setDrafted(true)}>
+            Compose manually
+          </Button>
+        )}
+        <Button
+          type="button"
+          variant="ai"
+          size="sm"
+          loading={composeMutation.isPending}
+          onClick={() => composeMutation.mutate()}
+        >
+          {drafted ? '✨ Regenerate draft' : '✨ Compose with AI'}
+        </Button>
+      </div>
+      {composeMutation.isError && (
+        <p className="text-[13px] text-rose-500">Couldn't generate a draft. Try again.</p>
+      )}
+
+      {drafted && (
+        <div className="space-y-3 pt-2 border-t border-ink-100">
+          <Field label="Subject">
+            <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+          </Field>
+          <Field label="Body">
+            <Textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)} />
+          </Field>
+        </div>
+      )}
+
+      {sendMutation.isError && (
+        <p className="text-[13px] text-rose-500">
+          {sendMutation.error instanceof ApiError
+            ? sendMutation.error.message
+            : "Couldn't send the email. Try again."}
+        </p>
+      )}
+
+      <div className="flex items-center justify-end gap-2.5 pt-2">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          disabled={!drafted || !subject.trim() || !body.trim()}
+          loading={sendMutation.isPending}
+          onClick={() => sendMutation.mutate()}
+        >
+          Send email
+        </Button>
+      </div>
+    </div>
   );
 }

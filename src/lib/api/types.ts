@@ -28,6 +28,15 @@ export interface Organization {
   updatedAt: string;
 }
 
+export type EmailTone = 'professional' | 'friendly' | 'concise' | 'warm';
+
+export const EMAIL_TONE_LABELS: Record<EmailTone, string> = {
+  professional: 'Professional',
+  friendly: 'Friendly',
+  concise: 'Concise',
+  warm: 'Warm',
+};
+
 export interface OrganizationSettings {
   id: string;
   organizationId: string;
@@ -36,5 +45,19 @@ export interface OrganizationSettings {
   defaultTimezone: string;
   notifyOnEvaluationReady: boolean;
   notifyOnNewApplication: boolean;
+  notifyOnInterviewScheduled: boolean;
+  notifyOnRoundDecision: boolean;
+  /** Persisted, but no digest-sending job reads it yet. */
+  weeklyDigestEnabled: boolean;
+  /** Persisted, but no product-announcements system reads it yet. */
+  productUpdatesEnabled: boolean;
+  aiQuestionGenEnabled: boolean;
+  aiResumeParseEnabled: boolean;
+  /** Persisted, but the evaluation pipeline doesn't check it yet — scoring always runs. */
+  aiScoringEnabled: boolean;
+  /** Persisted, but the evaluation pipeline doesn't check it yet — summaries always run. */
+  aiSummaryEnabled: boolean;
+  aiEmailDraftingEnabled: boolean;
+  emailTone: EmailTone;
   emailSignature: string | null;
 }

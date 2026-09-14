@@ -2,14 +2,15 @@ import { clsx } from 'clsx';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { AiSettingsTab } from './AiSettingsTab';
 import { CompanySettingsTab } from './CompanySettingsTab';
 import { EmailSettingsTab } from './EmailSettingsTab';
 import { NotificationSettingsTab } from './NotificationSettingsTab';
 import { TeamSettingsTab } from './TeamSettingsTab';
 
-type TabKey = 'company' | 'email' | 'notifications' | 'team';
+type TabKey = 'company' | 'email' | 'ai' | 'notifications' | 'team';
 
-const VALID_TABS: TabKey[] = ['company', 'email', 'notifications', 'team'];
+const VALID_TABS: TabKey[] = ['company', 'email', 'ai', 'notifications', 'team'];
 
 export function SettingsPage() {
   const { user } = useAuth();
@@ -23,41 +24,46 @@ export function SettingsPage() {
     : 'company';
   const [tab, setTab] = useState<TabKey>(initialTab);
 
-  const tabs: { key: TabKey; label: string }[] = [
-    { key: 'company', label: 'Company & AI' },
-    { key: 'email', label: 'Email & Gmail' },
-    { key: 'notifications', label: 'Notifications' },
-    ...(isAdmin ? [{ key: 'team' as const, label: 'Team' }] : []),
+  const tabs: { key: TabKey; label: string; icon: string }[] = [
+    { key: 'company', label: 'Company', icon: '🏢' },
+    { key: 'email', label: 'Email & Gmail', icon: '✉️' },
+    { key: 'ai', label: 'AI settings', icon: '✨' },
+    { key: 'notifications', label: 'Notifications', icon: '🔔' },
+    ...(isAdmin ? [{ key: 'team' as const, label: 'Team', icon: '👥' }] : []),
   ];
 
   return (
-    <div className="p-6 max-w-[1000px] mx-auto">
-      <h1 className="font-extrabold text-[26px] text-ink-900">Settings</h1>
+    <div className="p-6 max-w-[1100px] mx-auto">
+      <h1 className="font-display font-extrabold text-[26px] text-ink-900">Settings</h1>
       <p className="text-[15px] text-ink-500 mt-1 mb-6">
-        Manage your organization, AI defaults, notifications, and team.
+        Manage your account, integrations, and AI preferences.
       </p>
 
-      <div className="flex gap-1 border-b border-ink-200 mb-6">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={clsx(
-              'px-4 py-2.5 text-[14px] font-medium border-b-2 -mb-px transition-colors',
-              tab === t.key
-                ? 'border-brand-600 text-brand-700'
-                : 'border-transparent text-ink-500 hover:text-ink-800',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-6">
+        <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={clsx(
+                'flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap transition-colors shrink-0',
+                tab === t.key ? 'bg-brand-50 text-brand-700' : 'text-ink-600 hover:bg-ink-100',
+              )}
+            >
+              <span className="text-[15px]">{t.icon}</span>
+              {t.label}
+            </button>
+          ))}
+        </nav>
 
-      {tab === 'company' && <CompanySettingsTab />}
-      {tab === 'email' && <EmailSettingsTab />}
-      {tab === 'notifications' && <NotificationSettingsTab />}
-      {tab === 'team' && isAdmin && <TeamSettingsTab />}
+        <div className="min-w-0">
+          {tab === 'company' && <CompanySettingsTab />}
+          {tab === 'email' && <EmailSettingsTab />}
+          {tab === 'ai' && <AiSettingsTab />}
+          {tab === 'notifications' && <NotificationSettingsTab />}
+          {tab === 'team' && isAdmin && <TeamSettingsTab />}
+        </div>
+      </div>
     </div>
   );
 }
