@@ -23,7 +23,7 @@ export function KpiCard({
   const isUp = delta >= 0;
 
   return (
-    <Card className="p-4">
+    <Card className="p-4 pb-0 overflow-hidden">
       <div className="flex items-start justify-between mb-3">
         <div className={clsx('w-9 h-9 rounded-xl grid place-items-center text-white', iconBg)}>
           {icon}
@@ -40,11 +40,12 @@ export function KpiCard({
           </span>
         )}
       </div>
-      <div className="flex items-end justify-between gap-1.5">
-        <div className="flex-1 min-w-0">
-          <p className="font-extrabold text-[24px] text-ink-900 leading-none">{value}</p>
-          <p className="text-[12px] text-ink-500 mt-1.5 leading-snug">{label}</p>
-        </div>
+      <p className="font-extrabold text-[24px] text-ink-900 leading-none">{value}</p>
+      <p className="text-[12px] text-ink-500 mt-1.5 leading-snug">{label}</p>
+      {/* Bleeds past the card's own side/bottom padding so the chart fills the tile's
+       * full width and its bottom edge is clipped to the card's rounded corners by
+       * `overflow-hidden` above, instead of sitting inset like a small icon. */}
+      <div className="-mx-4 mt-2.5">
         <Sparkline data={sparkline} colorClassName={sparklineColor} />
       </div>
     </Card>

@@ -1,5 +1,11 @@
 import { api } from './client';
-import type { Candidate, CandidateInput, CandidateNote, CandidateStage } from './candidates.types';
+import type {
+  Candidate,
+  CandidateInput,
+  CandidateNote,
+  CandidateStage,
+  ParsedResumeInfo,
+} from './candidates.types';
 import { toQueryString } from './queryString';
 
 export interface ListCandidatesParams {
@@ -19,4 +25,9 @@ export const candidatesApi = {
     api.patch<Candidate>(`/candidates/${id}/stage`, { stage, rejectReason }),
   addNote: (id: string, body: string) => api.post<CandidateNote>(`/candidates/${id}/notes`, { body }),
   remove: (id: string) => api.delete<void>(`/candidates/${id}`),
+  parseResume: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.postForm<ParsedResumeInfo>('/candidates/parse-resume', formData);
+  },
 };

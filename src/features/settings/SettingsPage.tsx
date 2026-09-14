@@ -1,19 +1,31 @@
 import { clsx } from 'clsx';
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { CompanySettingsTab } from './CompanySettingsTab';
+import { EmailSettingsTab } from './EmailSettingsTab';
 import { NotificationSettingsTab } from './NotificationSettingsTab';
 import { TeamSettingsTab } from './TeamSettingsTab';
 
-type TabKey = 'company' | 'notifications' | 'team';
+type TabKey = 'company' | 'email' | 'notifications' | 'team';
+
+const VALID_TABS: TabKey[] = ['company', 'email', 'notifications', 'team'];
 
 export function SettingsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const [tab, setTab] = useState<TabKey>('company');
+  const [searchParams] = useSearchParams();
+  // The Gmail "Connect" OAuth flow round-trips through Google and lands back here via
+  // a full page redirect (?tab=email&gmail=connected) — the initial tab has to honor
+  // that, since there's no in-app navigation state to fall back on.
+  const initialTab = VALID_TABS.includes(searchParams.get('tab') as TabKey)
+    ? (searchParams.get('tab') as TabKey)
+    : 'company';
+  const [tab, setTab] = useState<TabKey>(initialTab);
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'company', label: 'Company & AI' },
+    { key: 'email', label: 'Email & Gmail' },
     { key: 'notifications', label: 'Notifications' },
     ...(isAdmin ? [{ key: 'team' as const, label: 'Team' }] : []),
   ];
@@ -43,6 +55,7 @@ export function SettingsPage() {
       </div>
 
       {tab === 'company' && <CompanySettingsTab />}
+      {tab === 'email' && <EmailSettingsTab />}
       {tab === 'notifications' && <NotificationSettingsTab />}
       {tab === 'team' && isAdmin && <TeamSettingsTab />}
     </div>

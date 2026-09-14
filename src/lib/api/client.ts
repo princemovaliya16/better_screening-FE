@@ -64,6 +64,43 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return envelope!.data;
 }
 
+/** Multipart upload variant of `request()` — used for the resume-parsing endpoint.
+ * Kept separate rather than folded into `request()`'s JSON body handling since a
+ * `FormData` body must NOT get a `Content-Type` header (the browser sets the
+ * multipart boundary itself). */
+async function requestForm<T>(
+  path: string,
+  formData: FormData,
+  options: Pick<RequestOptions, 'auth'> = {},
+): Promise<T> {
+  const { auth = true } = options;
+
+  const headers: Record<string, string> = {};
+  if (auth) {
+    const token = tokenStorage.get();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: formData });
+
+  if (res.status === 401 && auth) {
+    tokenStorage.clear();
+  }
+
+  let envelope: ApiEnvelope<T> | undefined;
+  try {
+    envelope = (await res.json()) as ApiEnvelope<T>;
+  } catch {
+    // no JSON body (e.g. network failure before the server responded)
+  }
+
+  if (!res.ok || envelope?.isError) {
+    throw new ApiError(envelope?.message ?? res.statusText, res.status);
+  }
+
+  return envelope!.data;
+}
+
 export const api = {
   get: <T>(path: string, options?: Omit<RequestOptions, 'method' | 'body'>) =>
     request<T>(path, { ...options, method: 'GET' }),
@@ -73,4 +110,6 @@ export const api = {
     request<T>(path, { ...options, method: 'PATCH', body }),
   delete: <T>(path: string, options?: Omit<RequestOptions, 'method' | 'body'>) =>
     request<T>(path, { ...options, method: 'DELETE' }),
+  postForm: <T>(path: string, formData: FormData, options?: { auth?: boolean }) =>
+    requestForm<T>(path, formData, options),
 };

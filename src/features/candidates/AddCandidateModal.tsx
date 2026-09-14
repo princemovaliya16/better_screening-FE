@@ -1,5 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { Button, Field, Input, Modal, Select, Textarea } from '@/components/ui';
@@ -34,10 +35,29 @@ export function AddCandidateModal({
     handleSubmit,
     reset,
     setError,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<CandidateFormValues>({
     resolver: zodResolver(candidateFormSchema),
     defaultValues: { jobId: preselectJobId ?? '' },
+  });
+
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+
+  const parseResumeMutation = useMutation({
+    mutationFn: (file: File) => candidatesApi.parseResume(file),
+    onSuccess: (parsed) => {
+      if (parsed.name) setValue('name', parsed.name);
+      if (parsed.email) setValue('email', parsed.email);
+      if (parsed.phone) setValue('phone', parsed.phone);
+      if (parsed.experienceYears != null) setValue('experienceYears', String(parsed.experienceYears));
+      if (parsed.currentCompany) setValue('currentCompany', parsed.currentCompany);
+      if (parsed.location) setValue('location', parsed.location);
+      if (parsed.education) setValue('education', parsed.education);
+      if (parsed.skills?.length) setValue('skillsText', parsed.skills.join(', '));
+      // jobId is intentionally left untouched — a resume doesn't say which job the
+      // candidate applied for.
+    },
   });
 
   const mutation = useMutation({
@@ -52,6 +72,7 @@ export function AddCandidateModal({
     onSuccess: (candidate) => {
       queryClient.invalidateQueries({ queryKey: ['org', organization?.id, 'candidates'] });
       reset();
+      setResumeFile(null);
       onClose();
       navigate(`/app/candidates/${candidate.id}`);
     },
@@ -65,6 +86,34 @@ export function AddCandidateModal({
   return (
     <Modal open={open} onClose={onClose} title="Add candidate" size="lg">
       <form onSubmit={handleSubmit((v) => mutation.mutate(v))} className="p-5 space-y-4">
+        <div className="rounded-lg bg-violet-50/60 border border-violet-100 p-3 space-y-2">
+          <span className="block text-[13px] font-medium text-ink-700">Auto-fill from resume (optional)</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="file"
+              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={(e) => setResumeFile(e.target.files?.[0] ?? null)}
+              className="flex-1 text-[13px] text-ink-600 file:mr-3 file:h-8 file:px-3 file:rounded-lg file:border-0 file:bg-white file:text-ink-700 file:border file:border-ink-200 file:text-[13px]"
+            />
+            <Button
+              type="button"
+              variant="ai"
+              size="sm"
+              disabled={!resumeFile}
+              loading={parseResumeMutation.isPending}
+              onClick={() => resumeFile && parseResumeMutation.mutate(resumeFile)}
+            >
+              ✨ Auto-fill from resume
+            </Button>
+          </div>
+          {parseResumeMutation.isError && (
+            <p className="text-[13px] text-rose-500">
+              {parseResumeMutation.error instanceof ApiError
+                ? parseResumeMutation.error.message
+                : "Couldn't read that resume. Try another file."}
+            </p>
+          )}
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Full name" error={errors.name?.message}>
             <Input placeholder="Candidate name" {...register('name')} />

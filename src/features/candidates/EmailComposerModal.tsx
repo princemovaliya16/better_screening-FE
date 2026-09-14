@@ -105,7 +105,12 @@ export function EmailComposerModal({
             onChange={(e) => setGuidance(e.target.value)}
           />
         </Field>
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2.5">
+          {!drafted && (
+            <Button type="button" variant="secondary" size="sm" onClick={() => setDrafted(true)}>
+              Compose manually
+            </Button>
+          )}
           <Button
             type="button"
             variant="ai"

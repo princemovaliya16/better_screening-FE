@@ -77,3 +77,16 @@ export interface CandidateInput {
   skills?: string[];
   resumeSummary?: string;
 }
+
+/** A best-effort extraction from an uploaded resume — not persisted. Used to
+ * pre-fill the Add Candidate form for the recruiter to review/edit. */
+export interface ParsedResumeInfo {
+  name?: string;
+  email?: string;
+  phone?: string;
+  experienceYears?: number;
+  currentCompany?: string;
+  location?: string;
+  education?: string;
+  skills?: string[];
+}

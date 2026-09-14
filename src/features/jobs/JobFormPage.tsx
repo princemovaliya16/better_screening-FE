@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Card, Field, Input, Select, Textarea } from '@/components/ui';
@@ -58,8 +58,11 @@ export function JobFormPage() {
     handleSubmit,
     reset,
     setError,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<JobFormValues>({ resolver: zodResolver(jobFormSchema), defaultValues: DEFAULT_VALUES });
+
+  const [pastedText, setPastedText] = useState('');
 
   useEffect(() => {
     if (existingJob) {
@@ -95,6 +98,30 @@ export function JobFormPage() {
   const skillsArray = useFieldArray({ control, name: 'skills' });
   const roundsArray = useFieldArray({ control, name: 'rounds' });
 
+  const extractMutation = useMutation({
+    mutationFn: () => jobsApi.extractJobInfo(pastedText),
+    onSuccess: (extracted) => {
+      if (extracted.title) setValue('title', extracted.title);
+      if (extracted.department) setValue('department', extracted.department);
+      if (extracted.location) setValue('location', extracted.location);
+      if (extracted.employmentType) setValue('employmentType', extracted.employmentType);
+      if (extracted.experienceMin != null) setValue('experienceMin', String(extracted.experienceMin));
+      if (extracted.experienceMax != null) setValue('experienceMax', String(extracted.experienceMax));
+      if (extracted.positionsCount != null) setValue('positionsCount', String(extracted.positionsCount));
+      if (extracted.description) setValue('description', extracted.description);
+      if (extracted.skills?.length) {
+        skillsArray.replace(
+          extracted.skills.map((s) => ({
+            name: s.name,
+            level: 'intermediate' as const,
+            required: true,
+            importance: 'high' as const,
+          })),
+        );
+      }
+    },
+  });
+
   const mutation = useMutation({
     mutationFn: (values: JobFormValues) => {
       const input = toJobInput(values);
@@ -123,6 +150,37 @@ export function JobFormPage() {
       <form onSubmit={handleSubmit((v) => mutation.mutate(v))} className="space-y-5">
         <Card className="p-6">
           <h2 className="font-bold text-ink-900 text-lg mb-4">Job information</h2>
+          {!isEditing && (
+            <div className="rounded-lg bg-violet-50/60 border border-violet-100 p-3 space-y-2 mb-4">
+              <span className="block text-[13px] font-medium text-ink-700">Auto-fill with AI (optional)</span>
+              <Textarea
+                rows={4}
+                className="!bg-white text-[13px]"
+                placeholder="Paste a job post, LinkedIn listing, or job description…"
+                value={pastedText}
+                onChange={(e) => setPastedText(e.target.value)}
+              />
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="ai"
+                  size="sm"
+                  disabled={!pastedText.trim()}
+                  loading={extractMutation.isPending}
+                  onClick={() => extractMutation.mutate()}
+                >
+                  ✨ Auto-fill with AI
+                </Button>
+              </div>
+              {extractMutation.isError && (
+                <p className="text-[13px] text-rose-500">
+                  {extractMutation.error instanceof ApiError
+                    ? extractMutation.error.message
+                    : "Couldn't extract job info. Try again."}
+                </p>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Job title" error={errors.title?.message}>
               <Input placeholder="e.g. Senior Frontend Developer" {...register('title')} />

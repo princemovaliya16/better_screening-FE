@@ -31,4 +31,6 @@ export const queryKeys = {
   notificationsUnreadCount: (orgId: string) =>
     ['org', orgId, 'notifications', 'unread-count'] as const,
   teamMembers: (orgId: string) => ['org', orgId, 'users'] as const,
+  mailAccountStatus: (orgId: string, userId: string) =>
+    ['org', orgId, 'mail-account', userId] as const,
 };

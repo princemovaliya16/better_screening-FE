@@ -53,6 +53,13 @@ export interface Job {
   updatedAt: string;
 }
 
+/** A job as returned by the list endpoint — the base job plus real, computed
+ * applicant-pipeline info (count + up to 3 most-recent applicants for avatars). */
+export interface JobListItem extends Job {
+  applicantsCount: number;
+  recentApplicants: { id: string; name: string }[];
+}
+
 export interface JobSkillInput {
   name: string;
   level?: SkillLevel;
@@ -86,6 +93,24 @@ export interface GeneratedQuestion {
 export interface GenerateQuestionsInput {
   count?: number;
   additionalContext?: string;
+}
+
+/** A suggestion only — not persisted. Used to pre-fill the Create Job form from
+ * pasted text (a LinkedIn post, a job description, notes, etc.). */
+export interface ExtractedJobSkill {
+  name: string;
+}
+
+export interface ExtractedJobInfo {
+  title?: string;
+  department?: string;
+  location?: string;
+  employmentType?: EmploymentType;
+  experienceMin?: number;
+  experienceMax?: number;
+  positionsCount?: number;
+  description?: string;
+  skills?: ExtractedJobSkill[];
 }
 
 export interface JobInput {
