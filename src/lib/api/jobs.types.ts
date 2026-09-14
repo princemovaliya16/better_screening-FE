@@ -47,6 +47,7 @@ export interface Job {
   status: JobStatus;
   description: string;
   createdByUserId: string | null;
+  createdBy?: { id: string; name: string } | null;
   skills: JobSkill[];
   rounds: RoundTemplate[];
   createdAt: string;

@@ -17,6 +17,7 @@ const DEFAULT_VALUES: JobFormValues = {
   department: DEPARTMENTS[0],
   location: '',
   employmentType: 'full_time',
+  salaryCurrency: 'INR',
   positionsCount: '1',
   status: 'draft',
   description: '',
@@ -34,6 +35,8 @@ function toJobInput(values: JobFormValues): JobInput {
     location: values.location || undefined,
     experienceMin: values.experienceMin ? Number(values.experienceMin) : undefined,
     experienceMax: values.experienceMax ? Number(values.experienceMax) : undefined,
+    salaryMin: values.salaryMin ? Number(values.salaryMin) : undefined,
+    salaryMax: values.salaryMax ? Number(values.salaryMax) : undefined,
     positionsCount: Number(values.positionsCount),
     rounds: values.rounds.map((r) => ({ ...r, durationMinutes: Number(r.durationMinutes) })),
   };
@@ -73,6 +76,9 @@ export function JobFormPage() {
         employmentType: existingJob.employmentType,
         experienceMin: existingJob.experienceMin != null ? String(existingJob.experienceMin) : '',
         experienceMax: existingJob.experienceMax != null ? String(existingJob.experienceMax) : '',
+        salaryMin: existingJob.salaryMin != null ? String(existingJob.salaryMin) : '',
+        salaryMax: existingJob.salaryMax != null ? String(existingJob.salaryMax) : '',
+        salaryCurrency: existingJob.salaryCurrency || 'INR',
         positionsCount: String(existingJob.positionsCount),
         status: existingJob.status,
         description: existingJob.description,
@@ -208,6 +214,20 @@ export function JobFormPage() {
             </Field>
             <Field label="Max experience (years)">
               <Input type="number" min={0} {...register('experienceMax')} />
+            </Field>
+            <Field label="Min salary (per annum)">
+              <Input type="number" min={0} placeholder="e.g. 2000000" {...register('salaryMin')} />
+            </Field>
+            <Field label="Max salary (per annum)">
+              <Input type="number" min={0} placeholder="e.g. 3200000" {...register('salaryMax')} />
+            </Field>
+            <Field label="Salary currency">
+              <Select {...register('salaryCurrency')}>
+                <option value="INR">INR (₹)</option>
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="GBP">GBP (£)</option>
+              </Select>
             </Field>
             <Field label="Positions" error={errors.positionsCount?.message}>
               <Input type="number" min={1} {...register('positionsCount')} />
