@@ -10,6 +10,7 @@ import {
   IconClock,
   IconDotsVertical,
   IconMapPin,
+  IconLayers,
   IconPeople,
   Ring,
 } from '@/components/ui';
@@ -22,7 +23,7 @@ import {
   type Candidate,
   type CandidateStage,
 } from '@/lib/api/candidates.types';
-import type { Job, JobStatus } from '@/lib/api/jobs.types';
+import type { Job, JobStatus, SkillImportance } from '@/lib/api/jobs.types';
 import { jobsApi } from '@/lib/api/jobs.api';
 import { queryKeys } from '@/lib/api/queryKeys';
 import { paletteFor } from '@/lib/avatar';
@@ -31,6 +32,19 @@ const STATUS_TONE: Record<JobStatus, 'green' | 'amber' | 'slate'> = {
   open: 'green',
   draft: 'amber',
   closed: 'slate',
+};
+
+/** High-importance skills should read as "must have" at a glance, so importance is
+ * colour-coded rather than plain grey text. */
+const IMPORTANCE_CLS: Record<SkillImportance, string> = {
+  high: 'bg-rose-50 text-rose-700',
+  medium: 'bg-amber-50 text-amber-700',
+  low: 'bg-ink-100 text-ink-500',
+};
+const IMPORTANCE_DOT: Record<SkillImportance, string> = {
+  high: 'bg-rose-500',
+  medium: 'bg-amber-500',
+  low: 'bg-ink-400',
 };
 
 const EMPLOYMENT_LABEL: Record<string, string> = {
@@ -49,6 +63,16 @@ const STAGE_TONE: Record<CandidateStage, 'sky' | 'amber' | 'brand' | 'violet' | 
   hired: 'green',
   rejected: 'rose',
 };
+
+/** Reads naturally whichever end of the range was filled in — an open-ended minimum
+ * ("5+ yrs") is as common on a job as a full range. */
+function formatExperience(job: Job): string | null {
+  const { experienceMin: min, experienceMax: max } = job;
+  if (min != null && max != null) return `${min}–${max} yrs`;
+  if (min != null) return `${min}+ yrs`;
+  if (max != null) return `Up to ${max} yrs`;
+  return null;
+}
 
 const CURRENCY_SYMBOLS: Record<string, string> = { INR: '₹', USD: '$', EUR: '€', GBP: '£' };
 
@@ -170,12 +194,10 @@ export function JobDetailsPage() {
                   <IconClock className="w-3.5 h-3.5 text-ink-400" />
                   {EMPLOYMENT_LABEL[job.employmentType] ?? job.employmentType}
                 </span>
-                {(job.experienceMin != null || job.experienceMax != null) && (
-                  <span className="inline-flex items-center gap-1">
-                    <IconBriefcase className="w-3.5 h-3.5 text-ink-400" />
-                    {job.experienceMin ?? 0}–{job.experienceMax ?? job.experienceMin} yrs
-                  </span>
-                )}
+                <span className="inline-flex items-center gap-1">
+                  <IconLayers className="w-3.5 h-3.5 text-ink-400" />
+                  {formatExperience(job) ?? 'Experience not specified'}
+                </span>
                 <span className="inline-flex items-center gap-1">
                   <IconPeople className="w-3.5 h-3.5 text-ink-400" />
                   {job.positionsCount} position{job.positionsCount !== 1 ? 's' : ''}
@@ -294,9 +316,16 @@ export function JobDetailsPage() {
                           {s.required ? 'Required' : 'Preferred'}
                         </Badge>
                       </div>
-                      <div className="flex items-center justify-between text-[11px] text-ink-500 capitalize">
-                        <span>{s.level}</span>
-                        <span className="capitalize">Importance: {s.importance}</span>
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-ink-500">
+                        <span className="capitalize">{s.level}</span>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold capitalize ${
+                            IMPORTANCE_CLS[s.importance]
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${IMPORTANCE_DOT[s.importance]}`} />
+                          {s.importance} importance
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -396,12 +425,7 @@ export function JobDetailsPage() {
             <dl className="space-y-3 text-[13px]">
               {[
                 ['Salary range', formatSalary(job)],
-                [
-                  'Experience',
-                  job.experienceMin != null || job.experienceMax != null
-                    ? `${job.experienceMin ?? 0}–${job.experienceMax ?? job.experienceMin} yrs`
-                    : '—',
-                ],
+                ['Experience', formatExperience(job) ?? '—'],
                 ['Positions', job.positionsCount],
                 ['Employment', EMPLOYMENT_LABEL[job.employmentType] ?? job.employmentType],
                 ['Posted on', new Date(job.createdAt).toLocaleDateString()],

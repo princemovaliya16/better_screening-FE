@@ -1,7 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Avatar, Badge, Button, Card, Ring, Textarea } from '@/components/ui';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  IconAward,
+  IconMail,
+  IconSparkle,
+  IconXCircle,
+  Ring,
+  Textarea,
+} from '@/components/ui';
 import { useOrg } from '@/context/OrgContext';
 import { candidatesApi } from '@/lib/api/candidates.api';
 import {
@@ -130,6 +141,23 @@ function nodeStyle(status: StepStatus | 'done') {
   }
 }
 
+/** The one-line outcome under a round's node — score included once a round is passed,
+ * so the tracker carries the result and not just the position. */
+function subLabel(status: StepStatus | 'done', score: number | null) {
+  switch (status) {
+    case 'passed':
+      return { text: score != null ? `Passed ${Math.round(score)}%` : 'Passed', cls: 'text-emerald-600' };
+    case 'review':
+      return { text: 'Review', cls: 'text-brand-600' };
+    case 'scheduled':
+      return { text: 'Scheduled', cls: 'text-amber-600' };
+    case 'rejected':
+      return { text: 'Not selected', cls: 'text-rose-600' };
+    default:
+      return null;
+  }
+}
+
 function RoundTracker({
   candidate,
   steps,
@@ -167,10 +195,10 @@ function RoundTracker({
                   if (s.step?.interview) onOpenRound(s.step.interview);
                   else if (s.status === 'current' && s.step) onScheduleRound(s.step.idx);
                 }}
-                className={`flex flex-col items-center gap-1.5 w-20 shrink-0 ${clickable ? 'cursor-pointer group' : ''}`}
+                className={`flex flex-col items-center gap-1 w-20 shrink-0 ${clickable ? 'cursor-pointer group' : ''}`}
               >
                 <div
-                  className={`w-9 h-9 rounded-full grid place-items-center transition-all text-[13px] ${n.cls} ${clickable ? 'group-hover:scale-110' : ''}`}
+                  className={`w-9 h-9 mb-0.5 rounded-full grid place-items-center transition-all text-[13px] ${n.cls} ${clickable ? 'group-hover:scale-110' : ''}`}
                 >
                   {n.glyph}
                 </div>
@@ -179,6 +207,12 @@ function RoundTracker({
                 >
                   {s.label}
                 </span>
+                {(() => {
+                  const sub = subLabel(s.status, s.step?.interview?.overallScore ?? null);
+                  return sub ? (
+                    <span className={`text-[10.5px] font-semibold leading-tight ${sub.cls}`}>{sub.text}</span>
+                  ) : null;
+                })()}
               </button>
               {i < trail.length - 1 && (
                 <div
@@ -508,35 +542,35 @@ export function CandidateDetailsPage() {
                     <div className="absolute right-0 z-10 mt-1 w-52 rounded-lg border border-ink-200 bg-white shadow-lg py-1">
                       <button
                         type="button"
-                        className="w-full text-left px-3 py-2 text-[13px] text-ink-700 hover:bg-ink-50"
+                        className="w-full flex items-center gap-2.5 text-left px-3 py-2 text-[13px] text-ink-700 hover:bg-ink-50"
                         onClick={() => openCompose('invitation')}
                       >
-                        Send invitation
+                        <IconSparkle className="w-4 h-4 text-violet-500" /> Send invitation
                       </button>
                       <button
                         type="button"
-                        className="w-full text-left px-3 py-2 text-[13px] text-ink-700 hover:bg-ink-50"
+                        className="w-full flex items-center gap-2.5 text-left px-3 py-2 text-[13px] text-ink-700 hover:bg-ink-50"
                         onClick={() => openCompose('offer')}
                       >
-                        Send offer email
+                        <IconAward className="w-4 h-4 text-ink-400" /> Send offer email
                       </button>
                       <button
                         type="button"
-                        className="w-full text-left px-3 py-2 text-[13px] text-ink-700 hover:bg-ink-50"
+                        className="w-full flex items-center gap-2.5 text-left px-3 py-2 text-[13px] text-ink-700 hover:bg-ink-50"
                         onClick={() => openCompose('rejected')}
                       >
-                        Send rejection
+                        <IconMail className="w-4 h-4 text-ink-400" /> Send rejection
                       </button>
                       <div className="my-1 border-t border-ink-100" />
                       <button
                         type="button"
-                        className="w-full text-left px-3 py-2 text-[13px] text-rose-600 hover:bg-rose-50"
+                        className="w-full flex items-center gap-2.5 text-left px-3 py-2 text-[13px] text-rose-600 hover:bg-rose-50"
                         onClick={() => {
                           setMenuOpen(false);
                           stageMutation.mutate('rejected');
                         }}
                       >
-                        Reject candidate
+                        <IconXCircle className="w-4 h-4" /> Reject candidate
                       </button>
                       <div className="my-1 border-t border-ink-100" />
                       <div className="px-3 py-1.5">

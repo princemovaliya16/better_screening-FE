@@ -134,90 +134,94 @@ export function JobsListPage() {
         </Link>
       </div>
 
-      <div className="flex items-center gap-5 border-b border-ink-100 mb-4 overflow-x-auto">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={clsx(
-              'flex items-center gap-1.5 pb-2.5 pt-1 text-[14px] font-semibold border-b-2 -mb-px whitespace-nowrap transition-colors',
-              tab === t.key
-                ? 'border-brand-600 text-brand-700'
-                : 'border-transparent text-ink-500 hover:text-ink-800',
-            )}
-          >
-            {t.label}
-            <span
+      {/* Tabs and filters share one row — picking a status and narrowing the list are
+          the same decision, so they read better side by side. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 mb-5">
+        <div className="flex items-center gap-5 overflow-x-auto">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
               className={clsx(
-                'text-[12px] font-bold rounded-full px-1.5 py-0.5',
-                tab === t.key ? 'bg-brand-50 text-brand-700' : 'bg-ink-100 text-ink-500',
+                'flex items-center gap-1.5 pb-1.5 pt-1 text-[14px] font-semibold border-b-2 whitespace-nowrap transition-colors',
+                tab === t.key
+                  ? 'border-brand-600 text-brand-700'
+                  : 'border-transparent text-ink-500 hover:text-ink-800',
               )}
             >
-              {counts[t.key]}
-            </span>
-          </button>
-        ))}
-      </div>
+              {t.label}
+              <span
+                className={clsx(
+                  'text-[12px] font-bold rounded-full px-1.5 py-0.5',
+                  tab === t.key ? 'bg-brand-50 text-brand-700' : 'bg-ink-100 text-ink-500',
+                )}
+              >
+                {counts[t.key]}
+              </span>
+            </button>
+          ))}
+        </div>
 
-      <div className="flex flex-wrap items-center gap-2.5 mb-5">
-        <div className="relative w-56">
-          <IconSearch className="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <Input
-            placeholder="Search jobs…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        <div className="w-40">
-          <Select value={department} onChange={(e) => setDepartment(e.target.value)}>
-            <option value="">All departments</option>
-            {departments.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="w-40">
-          <Select value={postedWithin} onChange={(e) => setPostedWithin(e.target.value as PostedWithin)}>
-            <option value="any">Any time</option>
-            <option value="7">Last 7 days</option>
-            <option value="30">Last 30 days</option>
-            <option value="90">Last 90 days</option>
-          </Select>
-        </div>
-        <div className="w-44">
-          <Select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}>
-            <option value="newest">Newest first</option>
-            <option value="oldest">Oldest first</option>
-            <option value="title">Title A–Z</option>
-          </Select>
-        </div>
-        <div className="ml-auto flex items-center gap-1 bg-ink-100 rounded-lg p-1">
-          <button
-            type="button"
-            onClick={() => setView('grid')}
-            aria-label="Grid view"
-            className={clsx(
-              'w-8 h-8 grid place-items-center rounded-md transition-colors',
-              view === 'grid' ? 'bg-white shadow-sm text-ink-800' : 'text-ink-400 hover:text-ink-600',
-            )}
-          >
-            <IconGrid className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setView('list')}
-            aria-label="List view"
-            className={clsx(
-              'w-8 h-8 grid place-items-center rounded-md transition-colors',
-              view === 'list' ? 'bg-white shadow-sm text-ink-800' : 'text-ink-400 hover:text-ink-600',
-            )}
-          >
-            <IconList className="w-4 h-4" />
-          </button>
+        <div className="flex flex-wrap items-center gap-2.5 ml-auto">
+          <div className="relative w-52">
+            <IconSearch className="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Input
+              placeholder="Search jobs…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <div className="w-36">
+            <Select value={department} onChange={(e) => setDepartment(e.target.value)}>
+              <option value="">All departments</option>
+              {departments.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="w-36">
+            <Select value={postedWithin} onChange={(e) => setPostedWithin(e.target.value as PostedWithin)}>
+              <option value="any">Any time</option>
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </Select>
+          </div>
+          <div className="w-40">
+            <Select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}>
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="title">Title A–Z</option>
+            </Select>
+          </div>
+          <div className="flex items-center gap-1 bg-ink-100 rounded-lg p-1">
+            <button
+              type="button"
+              onClick={() => setView('grid')}
+              aria-label="Grid view"
+              className={clsx(
+                'w-8 h-8 grid place-items-center rounded-md transition-colors',
+                view === 'grid' ? 'bg-white shadow-sm text-ink-800' : 'text-ink-400 hover:text-ink-600',
+              )}
+            >
+              <IconGrid className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('list')}
+              aria-label="List view"
+              className={clsx(
+                'w-8 h-8 grid place-items-center rounded-md transition-colors',
+                view === 'list' ? 'bg-white shadow-sm text-ink-800' : 'text-ink-400 hover:text-ink-600',
+              )}
+            >
+              <IconList className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 

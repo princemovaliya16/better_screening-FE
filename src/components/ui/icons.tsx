@@ -206,6 +206,24 @@ export function GoogleMark(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function IconAward(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="9" r="5" />
+      <path d="M9 13.5L7.5 21l4.5-2.5 4.5 2.5-1.5-7.5" />
+    </svg>
+  );
+}
+
+export function IconXCircle(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M15 9l-6 6M9 9l6 6" />
+    </svg>
+  );
+}
+
 export function IconSparkle(props: SVGProps<SVGSVGElement>) {
   return (
     <svg {...base} fill="currentColor" stroke="none" {...props}>
