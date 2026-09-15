@@ -104,6 +104,13 @@ export function JobDetailsPage() {
     },
   });
 
+  const postMutation = useMutation({
+    mutationFn: () => jobsApi.update(id!, { status: 'open' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org', organization?.id, 'jobs'] });
+    },
+  });
+
   if (isLoading) return <div className="p-6 text-sm text-ink-500">Loading…</div>;
   if (!job) return <div className="p-6 text-sm text-ink-500">Job not found.</div>;
 
@@ -178,6 +185,17 @@ export function JobDetailsPage() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {job.status === 'draft' && (
+              <Button
+                loading={postMutation.isPending}
+                onClick={() => {
+                  if (!confirm(`Post "${job.title}"? It will move from draft to open.`)) return;
+                  postMutation.mutate();
+                }}
+              >
+                Post job
+              </Button>
+            )}
             <Link to={`/app/jobs/${job.id}/edit`}>
               <Button variant="secondary">
                 <span className="mr-1">✎</span> Edit

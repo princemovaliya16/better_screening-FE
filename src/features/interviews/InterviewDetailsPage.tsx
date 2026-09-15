@@ -15,6 +15,7 @@ import { interviewsApi } from '@/lib/api/interviews.api';
 import { INTERVIEW_STATUS_LABELS, type InterviewStatus } from '@/lib/api/interviews.types';
 import type { InterviewRoundType } from '@/lib/api/jobs.types';
 import { queryKeys } from '@/lib/api/queryKeys';
+import { InterviewReviewView } from './InterviewReviewView';
 
 const RECOMMENDATION_TONE: Record<EvaluationRecommendation, 'green' | 'brand' | 'amber' | 'rose'> = {
   strong_hire: 'green',
@@ -123,7 +124,7 @@ export function InterviewDetailsPage() {
                 interview.type === 'ai_interview' ? 'ai-gradient text-white' : 'bg-brand-100 text-brand-700'
               }`}
             >
-              🎥
+              {interview.type === 'ai_interview' ? '✨' : '🎥'}
             </div>
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
@@ -162,6 +163,11 @@ export function InterviewDetailsPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {done && (
+              <Button variant="secondary" onClick={() => window.print()}>
+                ⤓ Report
+              </Button>
+            )}
             {interview.status === 'scheduled' && (
               <Button
                 variant="ai"
@@ -190,6 +196,9 @@ export function InterviewDetailsPage() {
         </div>
       </Card>
 
+      {done ? (
+        <InterviewReviewView interview={interview} evaluation={evaluation} />
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 space-y-5">
           {cancelled ? (
@@ -404,6 +413,7 @@ export function InterviewDetailsPage() {
           </Card>
         </div>
       </div>
+      )}
 
       {interview.candidate && (
         <EmailComposerModal

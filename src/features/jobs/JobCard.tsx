@@ -1,7 +1,16 @@
 import { clsx } from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Badge, Card, IconBriefcase, IconClock, IconDotsVertical, IconLayers, IconMapPin } from '@/components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  IconBriefcase,
+  IconClock,
+  IconDotsVertical,
+  IconLayers,
+  IconMapPin,
+} from '@/components/ui';
 import { initialsOf, paletteFor } from '@/lib/avatar';
 import type { JobListItem, JobStatus } from '@/lib/api/jobs.types';
 
@@ -21,9 +30,13 @@ const EMPLOYMENT_LABEL: Record<string, string> = {
 export function JobCard({
   job,
   onDelete,
+  onPost,
+  posting = false,
 }: {
   job: JobListItem;
   onDelete: (job: JobListItem) => void;
+  onPost: (job: JobListItem) => void;
+  posting?: boolean;
 }) {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -66,6 +79,18 @@ export function JobCard({
               >
                 View
               </button>
+              {job.status === 'draft' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onPost(job);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-ink-50 text-ink-700 font-medium"
+                >
+                  Post job
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => navigate(`/app/jobs/${job.id}/edit`)}
@@ -145,9 +170,16 @@ export function JobCard({
         ) : (
           <span className="text-[12.5px] text-ink-400">0 applicants</span>
         )}
-        <Badge tone={STATUS_TONE[job.status]} dot>
-          {job.status}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge tone={STATUS_TONE[job.status]} dot>
+            {job.status}
+          </Badge>
+          {job.status === 'draft' && (
+            <Button size="sm" loading={posting} onClick={() => onPost(job)}>
+              Post job
+            </Button>
+          )}
+        </div>
       </div>
     </Card>
   );

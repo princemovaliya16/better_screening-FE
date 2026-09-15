@@ -7,6 +7,9 @@ import { candidatesApi } from '@/lib/api/candidates.api';
 import {
   CANDIDATE_STAGE_LABELS,
   CANDIDATE_STAGES,
+  nextStageAfter,
+  ROUND_TYPE_STAGE,
+  STAGE_RANK,
   type Candidate,
   type CandidateStage,
 } from '@/lib/api/candidates.types';
@@ -14,7 +17,7 @@ import { emailComposerApi } from '@/lib/api/email-composer.api';
 import { EMAIL_TYPE_LABELS, type EmailType } from '@/lib/api/email-composer.types';
 import { interviewsApi } from '@/lib/api/interviews.api';
 import { INTERVIEW_STATUS_LABELS, type Interview } from '@/lib/api/interviews.types';
-import type { InterviewRoundType, RoundTemplate } from '@/lib/api/jobs.types';
+import type { RoundTemplate } from '@/lib/api/jobs.types';
 import { queryKeys } from '@/lib/api/queryKeys';
 import { EmailComposerModal } from './EmailComposerModal';
 import { ScheduleInterviewModal } from '@/features/interviews/ScheduleInterviewModal';
@@ -28,28 +31,6 @@ const STAGE_TONE: Record<CandidateStage, 'sky' | 'amber' | 'brand' | 'violet' | 
   hired: 'green',
   rejected: 'rose',
 };
-
-// Mirrors the backend's own `stageForRoundType` (interviews.service.ts) so the tracker
-// can tell, purely from data it already has, whether a completed round's stage has
-// been "cleared" (candidate moved on) or still needs a decision.
-const ROUND_TYPE_STAGE: Record<InterviewRoundType, CandidateStage> = {
-  ai_interview: 'screening',
-  hr: 'hr_review',
-  technical: 'interview',
-};
-const STAGE_RANK: Record<CandidateStage, number> = {
-  applied: 0,
-  screening: 1,
-  interview: 2,
-  hr_review: 3,
-  offer: 4,
-  hired: 5,
-  rejected: 99,
-};
-function nextStageAfter(stage: CandidateStage): CandidateStage {
-  const idx = CANDIDATE_STAGES.indexOf(stage);
-  return CANDIDATE_STAGES[idx + 1] ?? 'hired';
-}
 
 const TABS = ['overview', 'timeline', 'interviews', 'evaluation', 'resume'] as const;
 type Tab = (typeof TABS)[number];
@@ -243,6 +224,16 @@ export function CandidateDetailsPage() {
     queryKey: queryKeys.candidateEmails(organization?.id ?? '', id ?? ''),
     queryFn: () => emailComposerApi.list(id!),
     enabled: !!id,
+  });
+
+  // Signed URLs are short-lived, so this is fetched on demand (Resume tab only) and
+  // refreshed rather than cached for the session.
+  const { data: resumeUrl, isError: resumeUrlError } = useQuery({
+    queryKey: [...queryKeys.candidate(organization?.id ?? '', id ?? ''), 'resume-url'],
+    queryFn: () => candidatesApi.resumeUrl(id!),
+    enabled: !!id && tab === 'resume' && !!candidate?.resumePath,
+    staleTime: 10 * 60 * 1000,
+    retry: false,
   });
 
   const invalidateCandidate = () =>
@@ -900,23 +891,52 @@ export function CandidateDetailsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <div className="lg:col-span-2 space-y-5">
             <Card className="p-5">
-              <h2 className="font-display font-bold text-ink-900 text-lg mb-3">Resume</h2>
+              <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+                <h2 className="font-display font-bold text-ink-900 text-lg">Resume</h2>
+                {candidate.resumePath && (
+                  <a
+                    href={resumeUrl?.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={`inline-flex items-center gap-1.5 text-[13px] font-semibold ${
+                      resumeUrl ? 'text-brand-600 hover:text-brand-700' : 'text-ink-300 pointer-events-none'
+                    }`}
+                  >
+                    📄 Open original
+                  </a>
+                )}
+              </div>
               {candidate.resumePath ? (
-                <a
-                  href={candidate.resumePath}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand-600 hover:text-brand-700 mb-4"
-                >
-                  📄 View uploaded resume
-                </a>
+                resumeUrlError ? (
+                  <p className="text-sm text-rose-600 mb-4">
+                    Couldn't load the resume file. It may have been removed from storage.
+                  </p>
+                ) : (
+                  // Signed URL, so the embed has to wait for the fetch rather than
+                  // pointing straight at the (private) storage key.
+                  <div className="rounded-lg border border-ink-100 overflow-hidden mb-4 bg-ink-50 h-[520px]">
+                    {resumeUrl ? (
+                      <iframe src={resumeUrl.url} title="Resume" className="w-full h-full" />
+                    ) : (
+                      <div className="h-full grid place-items-center text-sm text-ink-400">Loading resume…</div>
+                    )}
+                  </div>
+                )
               ) : (
-                <p className="text-sm text-ink-400 mb-4">No resume file uploaded.</p>
+                <p className="text-sm text-ink-400 mb-4">
+                  No resume file uploaded. Resumes are stored when a candidate is added via
+                  "Auto-fill from resume".
+                </p>
               )}
               {candidate.resumeText ? (
-                <pre className="whitespace-pre-wrap text-[12.5px] text-ink-600 bg-ink-50 rounded-lg p-3 max-h-[420px] overflow-y-auto font-sans">
-                  {candidate.resumeText}
-                </pre>
+                <details className="group">
+                  <summary className="cursor-pointer text-[13px] font-semibold text-ink-600 hover:text-ink-800">
+                    Parsed text
+                  </summary>
+                  <pre className="whitespace-pre-wrap text-[12.5px] text-ink-600 bg-ink-50 rounded-lg p-3 mt-2 max-h-[420px] overflow-y-auto font-sans">
+                    {candidate.resumeText}
+                  </pre>
+                </details>
               ) : (
                 <p className="text-sm text-ink-400">No parsed resume text available.</p>
               )}

@@ -1,4 +1,4 @@
-import type { Job } from './jobs.types';
+import type { InterviewRoundType, Job } from './jobs.types';
 
 export type CandidateStage =
   | 'applied'
@@ -17,6 +17,41 @@ export const CANDIDATE_STAGES: CandidateStage[] = [
   'offer',
   'hired',
 ];
+
+/** Position of each stage in the forward-only pipeline (rejected sits outside it). */
+export const STAGE_RANK: Record<CandidateStage, number> = {
+  applied: 0,
+  screening: 1,
+  interview: 2,
+  hr_review: 3,
+  offer: 4,
+  hired: 5,
+  rejected: 99,
+};
+
+/** Mirrors the backend's own `stageForRoundType` (interviews.service.ts): the stage a
+ * candidate sits in while a round of this type is awaiting a decision. */
+export const ROUND_TYPE_STAGE: Record<InterviewRoundType, CandidateStage> = {
+  ai_interview: 'screening',
+  hr: 'hr_review',
+  technical: 'interview',
+};
+
+/** Whether a completed round of `roundType` still needs a decision, given where the
+ * candidate currently sits — there's no stored per-round outcome, so it's inferred. */
+export function roundDecisionState(
+  stage: CandidateStage,
+  roundType: InterviewRoundType,
+): 'pending' | 'advanced' | 'rejected' {
+  if (stage === 'rejected') return 'rejected';
+  return STAGE_RANK[stage] > STAGE_RANK[ROUND_TYPE_STAGE[roundType]] ? 'advanced' : 'pending';
+}
+
+/** Next stage in the forward-only pipeline — what "Accept & advance" moves a candidate to. */
+export function nextStageAfter(stage: CandidateStage): CandidateStage {
+  const idx = CANDIDATE_STAGES.indexOf(stage);
+  return CANDIDATE_STAGES[idx + 1] ?? 'hired';
+}
 
 export const CANDIDATE_STAGE_LABELS: Record<CandidateStage, string> = {
   applied: 'Applied',
@@ -76,10 +111,15 @@ export interface CandidateInput {
   education?: string;
   skills?: string[];
   resumeSummary?: string;
+  /** Storage key + extracted text returned by `parseResume` — passing them through
+   * on create is what attaches the uploaded file to the candidate record. */
+  resumePath?: string;
+  resumeText?: string;
 }
 
-/** A best-effort extraction from an uploaded resume — not persisted. Used to
- * pre-fill the Add Candidate form for the recruiter to review/edit. */
+/** A best-effort extraction from an uploaded resume, used to pre-fill the Add
+ * Candidate form for the recruiter to review/edit. The file itself is already stored
+ * by then — `resumePath`/`resumeText` are carried through to `create`. */
 export interface ParsedResumeInfo {
   name?: string;
   email?: string;
@@ -89,4 +129,6 @@ export interface ParsedResumeInfo {
   location?: string;
   education?: string;
   skills?: string[];
+  resumePath?: string;
+  resumeText?: string;
 }

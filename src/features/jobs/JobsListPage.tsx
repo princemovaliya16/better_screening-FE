@@ -63,6 +63,13 @@ export function JobsListPage() {
     },
   });
 
+  const postMutation = useMutation({
+    mutationFn: (id: string) => jobsApi.update(id, { status: 'open' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org', organization?.id, 'jobs'] });
+    },
+  });
+
   const departments = useMemo(
     () => Array.from(new Set(jobs.map((j) => j.department))).sort(),
     [jobs],
@@ -108,6 +115,11 @@ export function JobsListPage() {
   const handleDelete = (job: JobListItem) => {
     if (!window.confirm(`Delete "${job.title}"? This cannot be undone.`)) return;
     removeMutation.mutate(job.id);
+  };
+
+  const handlePost = (job: JobListItem) => {
+    if (!window.confirm(`Post "${job.title}"? It will move from draft to open.`)) return;
+    postMutation.mutate(job.id);
   };
 
   return (
@@ -222,7 +234,13 @@ export function JobsListPage() {
       ) : view === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((job) => (
-            <JobCard key={job.id} job={job} onDelete={handleDelete} />
+            <JobCard
+              key={job.id}
+              job={job}
+              onDelete={handleDelete}
+              onPost={handlePost}
+              posting={postMutation.isPending && postMutation.variables === job.id}
+            />
           ))}
         </div>
       ) : (
@@ -253,12 +271,23 @@ export function JobsListPage() {
                         {job.status}
                       </Badge>
                     </td>
-                    <td className="px-5 py-3 text-right">
-                      <Link to={`/app/jobs/${job.id}`}>
-                        <Button variant="secondary" size="sm">
-                          View
-                        </Button>
-                      </Link>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        {job.status === 'draft' && (
+                          <Button
+                            size="sm"
+                            loading={postMutation.isPending && postMutation.variables === job.id}
+                            onClick={() => handlePost(job)}
+                          >
+                            Post job
+                          </Button>
+                        )}
+                        <Link to={`/app/jobs/${job.id}`}>
+                          <Button variant="secondary" size="sm">
+                            View
+                          </Button>
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}

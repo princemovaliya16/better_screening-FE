@@ -43,6 +43,9 @@ export function AddCandidateModal({
   });
 
   const [resumeFile, setResumeFile] = useState<File | null>(null);
+  // Where the parsed file landed in storage — handed back on create so the record
+  // keeps its resume. Null when no resume was parsed (manual entry).
+  const [parsedResume, setParsedResume] = useState<{ resumePath?: string; resumeText?: string } | null>(null);
 
   const parseResumeMutation = useMutation({
     mutationFn: (file: File) => candidatesApi.parseResume(file),
@@ -55,6 +58,7 @@ export function AddCandidateModal({
       if (parsed.location) setValue('location', parsed.location);
       if (parsed.education) setValue('education', parsed.education);
       if (parsed.skills?.length) setValue('skillsText', parsed.skills.join(', '));
+      setParsedResume({ resumePath: parsed.resumePath, resumeText: parsed.resumeText });
       // jobId is intentionally left untouched — a resume doesn't say which job the
       // candidate applied for.
     },
@@ -64,6 +68,7 @@ export function AddCandidateModal({
     mutationFn: ({ skillsText, ...values }: CandidateFormValues) =>
       candidatesApi.create({
         ...values,
+        ...parsedResume,
         experienceYears: values.experienceYears ? Number(values.experienceYears) : undefined,
         skills: skillsText
           ? skillsText.split(',').map((s) => s.trim()).filter(Boolean)
@@ -73,6 +78,7 @@ export function AddCandidateModal({
       queryClient.invalidateQueries({ queryKey: ['org', organization?.id, 'candidates'] });
       reset();
       setResumeFile(null);
+      setParsedResume(null);
       onClose();
       navigate(`/app/candidates/${candidate.id}`);
     },
