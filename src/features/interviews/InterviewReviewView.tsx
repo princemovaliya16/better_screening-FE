@@ -12,9 +12,9 @@ import {
   type CandidateStage,
 } from '@/lib/api/candidates.types';
 import type { EvaluationView } from '@/lib/api/evaluation.types';
-import type { Interview } from '@/lib/api/interviews.types';
-import { initialsOf } from '@/lib/avatar';
+import type { Interview, InterviewRecording } from '@/lib/api/interviews.types';
 import { buildInterviewReview } from './interviewReview';
+import { RecordingPlayer } from './RecordingPlayer';
 
 /**
  * The HR review screen for a finished interview: recording, AI scoring, and the
@@ -24,15 +24,23 @@ import { buildInterviewReview } from './interviewReview';
 export function InterviewReviewView({
   interview,
   evaluation,
+  recordings,
+  recordingsLoading,
+  onRecordingUrlExpired,
 }: {
   interview: Interview;
   evaluation?: EvaluationView;
+  recordings?: InterviewRecording[];
+  recordingsLoading: boolean;
+  onRecordingUrlExpired: () => void;
 }) {
   const { organization } = useOrg();
   const queryClient = useQueryClient();
   const [emailOpen, setEmailOpen] = useState(false);
+  const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
 
-  const review = buildInterviewReview(interview, evaluation);
+  const review = buildInterviewReview(interview, evaluation, recordings);
+  const recordedIds = new Set((recordings ?? []).map((r) => r.questionId));
   const candidate = interview.candidate;
   const decision = candidate ? roundDecisionState(candidate.stage, interview.type) : 'pending';
   const firstName = candidate?.name.split(' ')[0] ?? 'the candidate';
@@ -52,53 +60,13 @@ export function InterviewReviewView({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5 items-start">
       <div className="space-y-5">
-        {/* Recording — visual placeholder until recordings are stored and played back. */}
-        <Card className="overflow-hidden bg-[#141032] border-ink-900/20">
-          <div className="relative aspect-[16/9] bg-[radial-gradient(circle_at_30%_20%,#241b56,#120f2b)] p-4">
-            <div className="absolute top-4 left-4 flex items-center gap-1.5 rounded-md bg-black/50 px-2 py-1 text-[11px] font-semibold text-white">
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> REC
-            </div>
-            <span className="absolute top-4 right-4 rounded-md bg-white/10 px-2 py-1 text-[11px] font-medium text-white/70">
-              Playback coming soon
-            </span>
-            <div className="h-full grid grid-cols-2 gap-3 place-items-center">
-              <div className="w-full h-full rounded-xl bg-white/[0.04] border border-white/10 grid place-items-center">
-                <div className="text-center">
-                  <div className="w-16 h-16 rounded-full bg-orange-500 text-white grid place-items-center font-bold text-xl mx-auto">
-                    {initialsOf(candidate?.name ?? 'Candidate')}
-                  </div>
-                  <p className="text-white text-[13px] font-semibold mt-2">{candidate?.name ?? 'Candidate'}</p>
-                  <p className="text-white/50 text-[11px]">Candidate</p>
-                </div>
-              </div>
-              <div className="w-full h-full rounded-xl bg-white/90 grid place-items-center">
-                <div className="text-center">
-                  <div className="w-16 h-16 rounded-2xl ai-gradient grid place-items-center text-white text-2xl mx-auto">
-                    ✨
-                  </div>
-                  <p className="text-ink-700 text-[13px] font-semibold mt-2">HireAI Interviewer</p>
-                  <p className="text-ink-400 text-[11px]">AI</p>
-                </div>
-              </div>
-            </div>
-            <div className="absolute inset-0 grid place-items-center pointer-events-none">
-              <div className="w-14 h-14 rounded-full bg-white/90 grid place-items-center text-ink-800 text-xl shadow-lg">
-                ▶
-              </div>
-            </div>
-          </div>
-          <div className="px-4 py-3 text-white/60">
-            <div className="h-1 rounded-full bg-white/15 mb-3" />
-            <div className="flex items-center gap-3 text-[12px]">
-              <span>▶</span>
-              <span>↺ 10</span>
-              <span className="tabular-nums">0:00 / {review.recordingLength}</span>
-              <span className="ml-auto">1×</span>
-              <span>🔊</span>
-              <span>⛶</span>
-            </div>
-          </div>
-        </Card>
+        <RecordingPlayer
+          recordings={recordings}
+          isLoading={recordingsLoading}
+          selectedQuestionId={selectedQuestionId}
+          onSelect={setSelectedQuestionId}
+          onUrlExpired={onRecordingUrlExpired}
+        />
 
         {/* AI summary */}
         <Card className="p-5">
@@ -164,12 +132,22 @@ export function InterviewReviewView({
                 {review.questions.length} question{review.questions.length === 1 ? '' : 's'} · scored individually
               </p>
             </div>
-            {review.hasSampleQuestions && <Badge tone="slate">Sample questions</Badge>}
+            {review.hasSampleQuestions ? (
+              <Badge tone="slate">Sample questions</Badge>
+            ) : (
+              review.hasSampleAnswers && <Badge tone="slate">Sample answers</Badge>
+            )}
           </div>
           <div className="mt-4">
             <div className="space-y-3">
               {review.questions.map((q, i) => (
-                <div key={q.id} className="rounded-xl border border-ink-100 p-4">
+                <div
+                  key={q.id}
+                  className={`rounded-xl border p-4 ${
+                    recordedIds.has(q.id) ? 'cursor-pointer hover:border-brand-200' : ''
+                  } ${selectedQuestionId === q.id ? 'border-brand-300 bg-brand-50/30' : 'border-ink-100'}`}
+                  onClick={() => recordedIds.has(q.id) && setSelectedQuestionId(q.id)}
+                >
                   <div className="flex gap-3">
                     <span className="w-6 h-6 shrink-0 rounded-md bg-ink-100 text-ink-500 grid place-items-center text-[12px] font-bold">
                       {i + 1}
@@ -177,7 +155,9 @@ export function InterviewReviewView({
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-semibold text-ink-800 mb-2">{q.questionText}</p>
                       <div className="rounded-lg bg-ink-50/70 p-3">
-                        <p className="text-[11px] font-semibold tracking-wide text-ink-400 mb-1">CANDIDATE ANSWER</p>
+                        <p className="text-[11px] font-semibold tracking-wide text-ink-400 mb-1">
+                          {review.hasSampleAnswers ? 'CANDIDATE ANSWER' : 'TRANSCRIPT'}
+                        </p>
                         <p className="text-[13px] text-ink-700">{q.answer}</p>
                       </div>
                       <p className="text-[12.5px] text-brand-700 mt-2.5">

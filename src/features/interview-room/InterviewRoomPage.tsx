@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Button } from '@/components/ui';
+import type { LocalVideoTrack } from 'livekit-client';
+import { Button, Field, Select } from '@/components/ui';
 import { ApiError } from '@/lib/api/client';
 import { interviewSessionApi } from '@/lib/api/interview-session.api';
 import type { CandidateSessionResponse } from '@/lib/api/interview-session.types';
-import { isRecordingSupported, useMediaRecorder } from './hooks/useMediaRecorder';
+import { isLiveKitSupported, useLiveKitRoom } from './hooks/useLiveKitRoom';
 import { useCountdown } from './hooks/useCountdown';
 
 type Stage =
@@ -13,17 +14,56 @@ type Stage =
   | 'already_submitted'
   | 'landing'
   | 'device_check'
-  | 'permission_denied'
   | 'unsupported'
+  | 'joining'
   | 'question'
-  | 'uploading'
   | 'submitting'
   | 'done'
   | 'error';
 
+/** Per-question recording state — the recording itself runs server-side (Egress). */
+type RecordingPhase = 'idle' | 'starting' | 'recording' | 'stopping';
+
 function firstUnansweredIndex(session: CandidateSessionResponse): number {
   const idx = session.questions.findIndex((q) => !q.answered);
   return idx === -1 ? session.questions.length : idx;
+}
+
+function errorText(err: unknown, fallback: string): string {
+  return err instanceof ApiError ? err.message : fallback;
+}
+
+function LocalPreview({ track }: { track: LocalVideoTrack | null }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !track) return;
+    track.attach(el);
+    return () => {
+      track.detach(el);
+    };
+  }, [track]);
+  return (
+    <video
+      ref={ref}
+      autoPlay
+      muted
+      playsInline
+      className="w-full rounded-xl bg-ink-900 aspect-video -scale-x-100"
+    />
+  );
+}
+
+function useElapsed(since: number | null): string {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (since == null) return;
+    const interval = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(interval);
+  }, [since]);
+  if (since == null) return '0:00';
+  const total = Math.max(0, Math.floor((now - since) / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
 export function InterviewRoomPage() {
@@ -33,120 +73,154 @@ export function InterviewRoomPage() {
   const [questionIndex, setQuestionIndex] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
   const [autoSubmitted, setAutoSubmitted] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const recorder = useMediaRecorder();
+  const [recordingPhase, setRecordingPhase] = useState<RecordingPhase>('idle');
+  const [recordingSince, setRecordingSince] = useState<number | null>(null);
+  const room = useLiveKitRoom();
+  const elapsed = useElapsed(recordingSince);
 
   const loadSession = async () => {
     if (!token) return;
     try {
       const data = await interviewSessionApi.getSession(token);
       setSession(data);
-      if (data.status === 'submitted') {
-        setStage('already_submitted');
-      } else {
-        setStage('landing');
-      }
+      setStage(data.status === 'submitted' ? 'already_submitted' : 'landing');
     } catch (err) {
-      setErrorMessage(err instanceof ApiError ? err.message : 'Something went wrong.');
+      setErrorMessage(errorText(err, 'Something went wrong.'));
       setStage(err instanceof ApiError && err.status !== 500 ? 'invalid' : 'error');
     }
   };
 
   useEffect(() => {
     loadSession();
-    return () => recorder.release();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  // A dropped connection ends whatever was being recorded — that answer has to be redone.
   useEffect(() => {
-    if (videoRef.current && recorder.stream) {
-      videoRef.current.srcObject = recorder.stream;
+    if (room.connectionState === 'lost' && recordingPhase !== 'idle') {
+      setRecordingPhase('idle');
+      setRecordingSince(null);
+      setErrorMessage('Your connection dropped, so that answer was not saved. Please record it again.');
     }
-  }, [recorder.stream]);
+  }, [room.connectionState, recordingPhase]);
 
-  const handleExpire = async () => {
-    if (stage === 'done' || stage === 'already_submitted' || stage === 'submitting') return;
-    setAutoSubmitted(true);
+  const submitRound = async (auto: boolean) => {
+    setAutoSubmitted(auto);
     setStage('submitting');
-    if (recorder.isRecording) {
-      try {
-        await recorder.stopRecording();
-      } catch {
-        /* ignore — we're submitting regardless */
-      }
-    }
     try {
+      // The backend stops any in-flight recording and closes the room on submit.
       if (token) await interviewSessionApi.submit(token);
     } finally {
+      room.release();
       setStage('done');
     }
+  };
+
+  const handleExpire = () => {
+    if (stage === 'done' || stage === 'already_submitted' || stage === 'submitting') return;
+    void submitRound(true);
   };
 
   const countdown = useCountdown(session?.deadlineAt ?? null, handleExpire);
 
   const beginDeviceCheck = () => {
-    if (!isRecordingSupported()) {
+    if (!isLiveKitSupported()) {
       setStage('unsupported');
       return;
     }
     setStage('device_check');
-    recorder.requestPermission();
+    room.requestPermission();
   };
 
-  const beginInterview = () => {
+  /** Joins the LiveKit room (starting the round clock on first join). Also used to
+   * rejoin after a lost connection — the backend issues a fresh room token. */
+  const joinRoom = async () => {
+    if (!token) return false;
+    const join = await interviewSessionApi.joinLivekit(token);
+    setSession((s) => (s ? { ...s, startedAt: join.startedAt, deadlineAt: join.deadlineAt } : s));
+    await room.connect(join.wsUrl, join.token);
+    return true;
+  };
+
+  const beginInterview = async () => {
     if (!session) return;
-    setQuestionIndex(firstUnansweredIndex(session));
+    setErrorMessage('');
+    setStage('joining');
+    try {
+      await joinRoom();
+    } catch (err) {
+      setErrorMessage(errorText(err, 'We could not connect you to the interview room. Please try again.'));
+      setStage('device_check');
+      return;
+    }
+    const idx = firstUnansweredIndex(session);
+    if (idx >= session.questions.length) {
+      // Nothing left to answer (e.g. every answer was saved before a crash) — just submit.
+      await submitRound(false);
+      return;
+    }
+    setQuestionIndex(idx);
     setStage('question');
   };
 
-  const finishRound = async () => {
-    setStage('submitting');
+  const reconnect = async () => {
+    setErrorMessage('');
     try {
-      if (token) await interviewSessionApi.submit(token);
-    } finally {
-      setStage('done');
+      await joinRoom();
+    } catch (err) {
+      setErrorMessage(errorText(err, 'Still unable to reconnect — check your internet connection.'));
     }
   };
 
-  const handleStopAndNext = async () => {
+  /** Starts the server-side recording for one question. Used by the candidate's first
+   * "Start recording" click, and automatically for every following question. */
+  const startRecordingFor = async (index: number) => {
+    if (!token || !session) return;
+    setErrorMessage('');
+    setRecordingPhase('starting');
+    try {
+      await interviewSessionApi.startRecording(token, session.questions[index].id);
+      setRecordingSince(Date.now());
+      setRecordingPhase('recording');
+    } catch (err) {
+      // Falls back to the manual "Start recording" button for this question.
+      setErrorMessage(errorText(err, 'We could not start recording — please try again.'));
+      setRecordingPhase('idle');
+    }
+  };
+
+  /** "Save & next" / "End call": saves the current answer, then either moves straight
+   * on to recording the next question or, on the last one, submits the interview. */
+  const saveAndContinue = async () => {
     if (!token || !session) return;
     const currentQuestion = session.questions[questionIndex];
+    setRecordingPhase('stopping');
     try {
-      const { blob, mimeType } = await recorder.stopRecording();
-      setStage('uploading');
-      const { uploadUrl, storageKey } = await interviewSessionApi.getUploadUrl(
-        token,
-        currentQuestion.id,
-        mimeType,
-      );
-      await interviewSessionApi.uploadToPresignedUrl(uploadUrl, blob, mimeType);
-      await interviewSessionApi.completeQuestion(token, currentQuestion.id, {
-        storageKey,
-        mimeType,
-        durationSeconds: undefined,
-        sizeBytes: blob.size,
-      });
-      setSession((s) =>
-        s
-          ? {
-              ...s,
-              questions: s.questions.map((q) =>
-                q.id === currentQuestion.id ? { ...q, answered: true } : q,
-              ),
-            }
-          : s,
-      );
+      await interviewSessionApi.stopRecording(token, currentQuestion.id);
+    } catch (err) {
+      setErrorMessage(errorText(err, 'We could not save that answer — please try again.'));
+      setRecordingPhase('recording');
+      return;
+    }
+    setRecordingPhase('idle');
+    setRecordingSince(null);
+    setSession((s) =>
+      s
+        ? {
+            ...s,
+            questions: s.questions.map((q) =>
+              q.id === currentQuestion.id ? { ...q, answered: true } : q,
+            ),
+          }
+        : s,
+    );
 
-      const nextIndex = questionIndex + 1;
-      if (nextIndex >= session.questions.length) {
-        await finishRound();
-      } else {
-        setQuestionIndex(nextIndex);
-        setStage('question');
-      }
-    } catch {
-      setErrorMessage('We could not save that answer — please try recording it again.');
-      setStage('question');
+    const nextIndex = questionIndex + 1;
+    if (nextIndex >= session.questions.length) {
+      await submitRound(false);
+    } else {
+      setQuestionIndex(nextIndex);
+      await startRecordingFor(nextIndex);
     }
   };
 
@@ -195,75 +269,96 @@ export function InterviewRoomPage() {
       <div className="text-center max-w-sm">
         <h1 className="font-bold text-xl text-ink-900">Browser not supported</h1>
         <p className="text-[14px] text-ink-500 mt-2">
-          Your browser doesn't support recording video. Please retry using the latest Chrome,
-          Edge, or Firefox.
+          Your browser doesn't support live video. Please retry using the latest Chrome, Edge,
+          Firefox, or Safari.
         </p>
       </div>
     );
   }
 
   if (stage === 'landing' && session) {
+    const resuming = !!session.startedAt;
     return (
       <div className="text-center max-w-sm">
-        <h1 className="font-bold text-xl text-ink-900">You're invited to an interview</h1>
+        <h1 className="font-bold text-xl text-ink-900">
+          {resuming ? 'Welcome back' : "You're invited to an interview"}
+        </h1>
         <p className="text-[14px] text-ink-500 mt-2">
           <b>{session.roundName}</b> for the <b>{session.jobTitle}</b> role.
         </p>
         <p className="text-[13px] text-ink-400 mt-1">
           {session.questions.length} question{session.questions.length !== 1 ? 's' : ''} ·{' '}
-          {session.durationMinutes} minutes once you begin
+          {resuming
+            ? `${countdown.formatted} remaining`
+            : `${session.durationMinutes} minutes once you begin`}
         </p>
         <Button variant="ai" className="mt-5" onClick={beginDeviceCheck}>
-          Begin
+          {resuming ? 'Continue' : 'Begin'}
         </Button>
       </div>
     );
   }
 
-  if (stage === 'permission_denied') {
-    return (
-      <div className="text-center max-w-sm">
-        <h1 className="font-bold text-xl text-ink-900">Camera & microphone needed</h1>
-        <p className="text-[14px] text-ink-500 mt-2">
-          Please allow camera and microphone access in your browser's settings, then try again.
-        </p>
-        <Button variant="ai" className="mt-4" onClick={() => recorder.requestPermission()}>
-          Try again
-        </Button>
-      </div>
-    );
-  }
-
-  if (stage === 'device_check') {
+  if (stage === 'device_check' || stage === 'joining') {
     return (
       <div className="text-center max-w-md w-full">
         <h1 className="font-bold text-xl text-ink-900 mb-3">Device check</h1>
-        {recorder.permission === 'requesting' && (
+        {room.permission === 'requesting' && (
           <p className="text-[14px] text-ink-500">Requesting camera & microphone access…</p>
         )}
-        {recorder.permission === 'denied' && (
+        {room.permission === 'denied' && (
           <div>
-            <p className="text-[14px] text-rose-500 mb-3">{recorder.error}</p>
-            <Button variant="ai" onClick={() => recorder.requestPermission()}>
+            <p className="text-[14px] text-rose-500 mb-3">{room.error}</p>
+            <Button variant="ai" onClick={() => room.requestPermission()}>
               Try again
             </Button>
           </div>
         )}
-        {recorder.permission === 'granted' && (
+        {room.permission === 'granted' && (
           <>
-            <video
-              ref={videoRef}
-              autoPlay
-              muted
-              playsInline
-              className="w-full rounded-xl bg-ink-900 aspect-video mb-4"
-            />
+            <div className="mb-4">
+              <LocalPreview track={room.videoTrack} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-left mb-4">
+              <Field label="Camera">
+                <Select
+                  value={room.videoDeviceId}
+                  disabled={stage === 'joining'}
+                  onChange={(e) => room.selectDevice('videoinput', e.target.value)}
+                >
+                  {room.videoDevices.map((d) => (
+                    <option key={d.deviceId} value={d.deviceId}>
+                      {d.label || 'Camera'}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Microphone">
+                <Select
+                  value={room.audioDeviceId}
+                  disabled={stage === 'joining'}
+                  onChange={(e) => room.selectDevice('audioinput', e.target.value)}
+                >
+                  {room.audioDevices.map((d) => (
+                    <option key={d.deviceId} value={d.deviceId}>
+                      {d.label || 'Microphone'}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            {errorMessage && <p className="text-[13px] text-rose-500 mb-3">{errorMessage}</p>}
             <p className="text-[13px] text-ink-500 mb-4">
-              Looking good. When you're ready, begin the interview — the timer starts as soon as
+              Looking good. When you're ready, start the interview — the timer starts as soon as
               you do.
             </p>
-            <Button variant="ai" onClick={beginInterview}>
-              Start interview
+            <Button
+              variant="ai"
+              onClick={beginInterview}
+              loading={stage === 'joining'}
+              disabled={stage === 'joining'}
+            >
+              {stage === 'joining' ? 'Connecting…' : 'Start interview'}
             </Button>
           </>
         )}
@@ -271,8 +366,10 @@ export function InterviewRoomPage() {
     );
   }
 
-  if ((stage === 'question' || stage === 'uploading') && session) {
+  if (stage === 'question' && session) {
     const q = session.questions[questionIndex];
+    const isLast = questionIndex + 1 >= session.questions.length;
+    const connected = room.connectionState === 'connected';
     return (
       <div className="max-w-lg w-full">
         <div className="flex items-center justify-between mb-4">
@@ -285,29 +382,73 @@ export function InterviewRoomPage() {
             {countdown.formatted} remaining
           </span>
         </div>
+
+        {room.connectionState === 'reconnecting' && (
+          <div className="rounded-lg bg-amber-50 text-amber-800 text-[13px] px-3 py-2 mb-3">
+            Reconnecting… please stay on this page.
+          </div>
+        )}
+        {room.connectionState === 'lost' && (
+          <div className="rounded-lg bg-rose-50 text-rose-700 text-[13px] px-3 py-2 mb-3 flex items-center justify-between gap-3">
+            <span>Connection lost.</span>
+            <Button size="sm" variant="secondary" onClick={reconnect}>
+              Reconnect
+            </Button>
+          </div>
+        )}
+
         <div className="rounded-xl bg-ink-50 p-5 mb-4">
           <p className="text-[16px] font-medium text-ink-900">{q.questionText}</p>
         </div>
-        <video
-          ref={videoRef}
-          autoPlay
-          muted
-          playsInline
-          className="w-full rounded-xl bg-ink-900 aspect-video mb-4"
-        />
+        <div className="relative mb-4">
+          <LocalPreview track={room.videoTrack} />
+          {recordingPhase === 'recording' && (
+            <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-[12px] font-semibold text-white tabular-nums">
+              <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+              REC {elapsed}
+            </span>
+          )}
+        </div>
         {errorMessage && <p className="text-[13px] text-rose-500 mb-3">{errorMessage}</p>}
-        {stage === 'uploading' ? (
-          <Button variant="ai" className="w-full" loading disabled>
-            Saving your answer…
-          </Button>
-        ) : recorder.isRecording ? (
-          <Button variant="ai" className="w-full" onClick={handleStopAndNext}>
-            Stop & {questionIndex + 1 >= session.questions.length ? 'finish' : 'next'}
-          </Button>
-        ) : (
-          <Button variant="ai" className="w-full" onClick={recorder.startRecording}>
+
+        {recordingPhase === 'idle' && (
+          <Button
+            variant="ai"
+            className="w-full"
+            onClick={() => startRecordingFor(questionIndex)}
+            disabled={!connected}
+          >
             Start recording
           </Button>
+        )}
+        {recordingPhase === 'starting' && (
+          <Button variant="ai" className="w-full" loading disabled>
+            Starting recording…
+          </Button>
+        )}
+        {recordingPhase === 'recording' &&
+          (isLast ? (
+            <Button
+              className="w-full !bg-rose-600 hover:!bg-rose-700 !shadow-rose-600/20"
+              onClick={saveAndContinue}
+              disabled={!connected}
+            >
+              End call
+            </Button>
+          ) : (
+            <Button variant="ai" className="w-full" onClick={saveAndContinue} disabled={!connected}>
+              Save & next
+            </Button>
+          ))}
+        {recordingPhase === 'stopping' && (
+          <Button variant="ai" className="w-full" loading disabled>
+            {isLast ? 'Ending call…' : 'Saving your answer…'}
+          </Button>
+        )}
+        {recordingPhase === 'recording' && !isLast && (
+          <p className="text-[12px] text-ink-400 text-center mt-2">
+            The next question starts recording automatically.
+          </p>
         )}
       </div>
     );
