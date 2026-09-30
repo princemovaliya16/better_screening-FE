@@ -76,5 +76,8 @@ export interface InterviewRecording {
   mimeType: string | null;
   playbackUrl: string | null;
   transcriptText: string | null;
+  /** null until the round is submitted and the recording is sent for transcription. */
+  transcriptionStatus: 'pending' | 'completed' | 'failed' | null;
+  transcriptionError: string | null;
   failureReason: string | null;
 }
