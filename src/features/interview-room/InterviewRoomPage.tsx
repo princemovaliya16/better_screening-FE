@@ -161,19 +161,24 @@ export function InterviewRoomPage() {
     }
     setQuestionIndex(idx);
     setStage('question');
+    // The candidate goes straight into answering — no separate "Start recording" click.
+    await startRecordingFor(idx);
   };
 
   const reconnect = async () => {
     setErrorMessage('');
     try {
       await joinRoom();
+      // The dropped connection ended the previous recording — pick the question back up.
+      await startRecordingFor(questionIndex);
     } catch (err) {
       setErrorMessage(errorText(err, 'Still unable to reconnect — check your internet connection.'));
     }
   };
 
-  /** Starts the server-side recording for one question. Used by the candidate's first
-   * "Start recording" click, and automatically for every following question. */
+  /** Starts the server-side recording for one question — automatically when a question
+   * opens (first question after joining, each next one after "Save & next", and after a
+   * reconnect). The "Retry recording" button is only a fallback if starting fails. */
   const startRecordingFor = async (index: number) => {
     if (!token || !session) return;
     setErrorMessage('');
@@ -183,7 +188,7 @@ export function InterviewRoomPage() {
       setRecordingSince(Date.now());
       setRecordingPhase('recording');
     } catch (err) {
-      // Falls back to the manual "Start recording" button for this question.
+      // Falls back to the manual "Retry recording" button for this question.
       setErrorMessage(errorText(err, 'We could not start recording — please try again.'));
       setRecordingPhase('idle');
     }
@@ -418,7 +423,7 @@ export function InterviewRoomPage() {
             onClick={() => startRecordingFor(questionIndex)}
             disabled={!connected}
           >
-            Start recording
+            Retry recording
           </Button>
         )}
         {recordingPhase === 'starting' && (
