@@ -3,15 +3,14 @@ import {
   type EvaluationRecommendation,
   type EvaluationView,
 } from '@/lib/api/evaluation.types';
-import type { Interview } from '@/lib/api/interviews.types';
+import type { Interview, InterviewRecording } from '@/lib/api/interviews.types';
 import type { InterviewRoundType } from '@/lib/api/jobs.types';
 
 /**
- * The AI evaluation engine isn't wired up yet, so a completed interview usually has
- * no summary/question analysis to show. This builds the review model the HR review
- * screen renders: real evaluation data when the backend has it, otherwise deterministic
- * sample data derived from the interview itself (same interview → same numbers, so the
- * screen doesn't reshuffle on every render). `isSample` drives the "sample data" badge.
+ * Builds the review model the HR review screen renders: real evaluation data and real
+ * recordings/transcripts when the backend has them, otherwise deterministic sample
+ * data derived from the interview itself (same interview → same numbers, so the screen
+ * doesn't reshuffle on every render). `isSample` drives the "sample data" badge.
  */
 
 export const COMPETENCY_LABELS: Record<string, string> = {
@@ -40,7 +39,7 @@ export interface ReviewQuestion {
 export interface InterviewReview {
   /** True when any part of what's shown is placeholder data, not engine output. */
   isSample: boolean;
-  /** Answers/transcript are always placeholders until recordings are transcribed. */
+  /** True when answer text is placeholder (no recordings were loaded for this interview). */
   hasSampleAnswers: boolean;
   /** True when the round had no configured questions and sample ones are shown. */
   hasSampleQuestions: boolean;
@@ -53,7 +52,7 @@ export interface InterviewReview {
   weaknesses: string[];
   competencies: ReviewCompetency[];
   questions: ReviewQuestion[];
-  /** mm:ss for the recording transport — placeholder until real recordings play back. */
+  /** Total mm:ss across the question recordings (estimated when none are loaded). */
   recordingLength: string;
 }
 
@@ -198,9 +197,18 @@ function recommendationFor(score: number): EvaluationRecommendation {
   return 'strong_no_hire';
 }
 
+/** What to show in place of a transcript for a real (recorded) question. */
+function answerFromRecording(recording: InterviewRecording | undefined): string {
+  if (recording?.transcriptText) return recording.transcriptText;
+  if (!recording || recording.status === 'not_recorded') return 'The candidate did not answer this question.';
+  if (recording.status === 'failed') return 'The recording for this answer failed, so there is no transcript.';
+  return 'Transcript not available yet.';
+}
+
 export function buildInterviewReview(
   interview: Interview,
   evaluation?: EvaluationView,
+  recordings?: InterviewRecording[],
 ): InterviewReview {
   const summary = evaluation?.status === 'completed' ? evaluation.summary : undefined;
   const seed = seedOf(interview.id);
@@ -227,12 +235,16 @@ export function buildInterviewReview(
   // were never generated) have none stored — fall back to a sample set so the
   // per-question scoring is still demonstrated.
   const hasSampleQuestions = interview.questions.length === 0;
+  const hasSampleAnswers = hasSampleQuestions || !recordings;
+  const recordingByQuestionId = new Map((recordings ?? []).map((r) => [r.questionId, r]));
   const sourceQuestions = hasSampleQuestions
     ? SAMPLE_QA[interview.type].map((qa, i) => ({ id: `sample-${i}`, questionText: qa.question, answer: qa.answer }))
     : interview.questions.map((q, i) => ({
         id: q.id,
         questionText: q.questionText,
-        answer: SAMPLE_ANSWERS[seedOf(`${seed}:a${i}`) % SAMPLE_ANSWERS.length],
+        answer: recordings
+          ? answerFromRecording(recordingByQuestionId.get(q.id))
+          : SAMPLE_ANSWERS[seedOf(`${seed}:a${i}`) % SAMPLE_ANSWERS.length],
       }));
 
   const questions: ReviewQuestion[] = sourceQuestions.map((q, i) => {
@@ -241,7 +253,6 @@ export function buildInterviewReview(
     return {
       id: q.id,
       questionText: q.questionText,
-      // No transcript pipeline yet, so the answer text is always a placeholder.
       answer: q.answer,
       score,
       feedback: analysis
@@ -254,10 +265,11 @@ export function buildInterviewReview(
 
   const minutes = interview.durationMinutes || 30;
   const seconds = seedOf(`${seed}:len`) % 60;
+  const recordedSeconds = (recordings ?? []).reduce((sum, r) => sum + (r.durationSeconds ?? 0), 0);
 
   return {
     isSample: !summary,
-    hasSampleAnswers: true,
+    hasSampleAnswers,
     hasSampleQuestions,
     overallScore,
     recommendation,
@@ -271,6 +283,8 @@ export function buildInterviewReview(
     weaknesses: summary?.weaknesses ?? SAMPLE_WEAKNESSES,
     competencies,
     questions,
-    recordingLength: `${Math.max(1, minutes - 3)}:${String(seconds).padStart(2, '0')}`,
+    recordingLength: recordings
+      ? `${Math.floor(recordedSeconds / 60)}:${String(recordedSeconds % 60).padStart(2, '0')}`
+      : `${Math.max(1, minutes - 3)}:${String(seconds).padStart(2, '0')}`,
   };
 }

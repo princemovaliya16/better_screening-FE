@@ -20,6 +20,8 @@ export const queryKeys = {
   interview: (orgId: string, id: string) => ['org', orgId, 'interviews', id] as const,
   interviewEvaluation: (orgId: string, interviewId: string) =>
     ['org', orgId, 'interviews', interviewId, 'evaluation'] as const,
+  interviewRecordings: (orgId: string, interviewId: string) =>
+    ['org', orgId, 'interviews', interviewId, 'recordings'] as const,
 
   candidateEmails: (orgId: string, candidateId: string) =>
     ['org', orgId, 'candidates', candidateId, 'emails'] as const,

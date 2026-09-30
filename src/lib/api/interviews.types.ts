@@ -1,3 +1,4 @@
+import type { RecordingStatus } from './interview-session.types';
 import type { Candidate } from './candidates.types';
 import type { InterviewRoundType, Job, QuestionType } from './jobs.types';
 
@@ -62,4 +63,21 @@ export interface RescheduleInterviewInput {
   durationMinutes?: number;
   interviewerUserId?: string;
   timezone?: string;
+}
+
+/** One question's LiveKit recording, as returned by GET /interviews/:id/recordings.
+ * `playbackUrl` is a short-lived signed URL, present only once the file is ready. */
+export interface InterviewRecording {
+  questionId: string;
+  orderIndex: number;
+  questionText: string;
+  status: RecordingStatus | 'not_recorded';
+  durationSeconds: number | null;
+  mimeType: string | null;
+  playbackUrl: string | null;
+  transcriptText: string | null;
+  /** null until the round is submitted and the recording is sent for transcription. */
+  transcriptionStatus: 'pending' | 'completed' | 'failed' | null;
+  transcriptionError: string | null;
+  failureReason: string | null;
 }

@@ -17,7 +17,20 @@ export interface CandidateSessionResponse {
   questions: CandidateSessionQuestion[];
 }
 
-export interface UploadUrlResponse {
-  uploadUrl: string;
-  storageKey: string;
+/** Everything the browser needs to join the candidate's LiveKit room. The first
+ * join also starts the round clock, so `deadlineAt` is always set here. */
+export interface LivekitJoinResponse {
+  wsUrl: string;
+  token: string;
+  roomName: string;
+  startedAt: string;
+  deadlineAt: string;
 }
+
+export type RecordingStatus =
+  | 'recording'
+  | 'processing'
+  | 'failed'
+  | 'uploaded'
+  | 'transcribed'
+  | 'scored';

@@ -6,7 +6,6 @@ import { CandidateDetailsPage } from '@/features/candidates/CandidateDetailsPage
 import { CandidatesListPage } from '@/features/candidates/CandidatesListPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { LoginPage } from '@/features/auth/LoginPage';
-import { InterviewRoomPage } from '@/features/interview-room/InterviewRoomPage';
 import { InterviewDetailsPage } from '@/features/interviews/InterviewDetailsPage';
 import { InterviewsListPage } from '@/features/interviews/InterviewsListPage';
 import { JobDetailsPage } from '@/features/jobs/JobDetailsPage';
@@ -45,6 +44,15 @@ export const router = createBrowserRouter([
   {
     path: '/interview-room/:token',
     element: <InterviewRoomLayout />,
-    children: [{ index: true, element: <InterviewRoomPage /> }],
+    // Lazy so livekit-client (large) only loads for candidates, never in the recruiter app.
+    children: [
+      {
+        index: true,
+        lazy: async () => ({
+          Component: (await import('@/features/interview-room/InterviewRoomPage'))
+            .InterviewRoomPage,
+        }),
+      },
+    ],
   },
 ]);

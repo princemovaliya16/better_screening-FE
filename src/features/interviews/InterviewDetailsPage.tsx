@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { CopyableLink } from '@/components/patterns/CopyableLink';
 import { Avatar, Badge, Button, Card } from '@/components/ui';
 import { useOrg } from '@/context/OrgContext';
 import { CANDIDATE_STAGE_LABELS } from '@/lib/api/candidates.types';
@@ -16,6 +17,7 @@ import { INTERVIEW_STATUS_LABELS, type InterviewStatus } from '@/lib/api/intervi
 import type { InterviewRoundType } from '@/lib/api/jobs.types';
 import { queryKeys } from '@/lib/api/queryKeys';
 import { InterviewReviewView } from './InterviewReviewView';
+import { RecordingPlayer } from './RecordingPlayer';
 
 const RECOMMENDATION_TONE: Record<EvaluationRecommendation, 'green' | 'brand' | 'amber' | 'rose'> = {
   strong_hire: 'green',
@@ -70,6 +72,28 @@ export function InterviewDetailsPage() {
       return status === 'transcribing' || status === 'evaluating' ? 8000 : false;
     },
   });
+
+  // Recordings exist from the moment the candidate starts answering. Poll while any
+  // are still being finalised by LiveKit Egress or transcribed; signed URLs last ~15 minutes, so
+  // treat the data as stale well before that (and refetch on a playback error).
+  const hasRecordings =
+    !!interview && ['in_progress', 'pending_evaluation', 'completed'].includes(interview.status);
+  const recordingsQuery = useQuery({
+    queryKey: queryKeys.interviewRecordings(organization?.id ?? '', id ?? ''),
+    queryFn: () => interviewsApi.recordings(id!),
+    enabled: !!id && hasRecordings,
+    staleTime: 10 * 60_000,
+    refetchInterval: (query) =>
+      query.state.data?.some(
+        (r) =>
+          r.status === 'recording' ||
+          r.status === 'processing' ||
+          r.transcriptionStatus === 'pending',
+      )
+        ? 5000
+        : false,
+  });
+  const [selectedRecordingId, setSelectedRecordingId] = useState<string | null>(null);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['org', organization?.id, 'interviews'] });
@@ -197,7 +221,13 @@ export function InterviewDetailsPage() {
       </Card>
 
       {done ? (
-        <InterviewReviewView interview={interview} evaluation={evaluation} />
+        <InterviewReviewView
+          interview={interview}
+          evaluation={evaluation}
+          recordings={recordingsQuery.data}
+          recordingsLoading={recordingsQuery.isLoading}
+          onRecordingUrlExpired={() => recordingsQuery.refetch()}
+        />
       ) : (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 space-y-5">
@@ -230,14 +260,7 @@ export function InterviewDetailsPage() {
                 </p>
                 <div className="flex items-center justify-center gap-2 mt-4 flex-wrap">
                   {joinLinkMutation.data ? (
-                    <button
-                      type="button"
-                      onClick={() => navigator.clipboard?.writeText(joinLinkMutation.data!.url)}
-                      className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-white border border-ink-200 text-[13px] font-medium text-ink-700 hover:bg-ink-50"
-                      title="Click to copy"
-                    >
-                      🔗 {joinLinkMutation.data.url}
-                    </button>
+                    <CopyableLink url={joinLinkMutation.data.url} />
                   ) : (
                     <Button
                       variant="secondary"
@@ -261,6 +284,16 @@ export function InterviewDetailsPage() {
                 </div>
               </Card>
             )
+          )}
+
+          {hasRecordings && !cancelled && (
+            <RecordingPlayer
+              recordings={recordingsQuery.data}
+              isLoading={recordingsQuery.isLoading}
+              selectedQuestionId={selectedRecordingId}
+              onSelect={setSelectedRecordingId}
+              onUrlExpired={() => recordingsQuery.refetch()}
+            />
           )}
 
           {evaluation && evaluation.status !== 'not_submitted' && (

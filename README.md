@@ -32,24 +32,22 @@ What's implemented so far:
   (candidate stage auto-advances) → edit an existing job (values pre-populate
   correctly) — zero console errors throughout.
 
-- **Candidate interview room** (`/interview-room/:token`, isolated route tree, no
-  recruiter code/data reachable): landing → device check (camera/mic preview) →
-  one question at a time, each recorded then uploaded before advancing → thank-you
-  screen. A single whole-round countdown (not per-question) is shown throughout and
-  auto-submits on expiry. Reopening the link mid-round resumes at the first
-  unanswered question rather than restarting.
-  - Simplification vs. the original plan: uploads are **blocking per question**
-    (record → upload → then advance) rather than a background queue that lets the
-    candidate start the next question while the previous one still uploads. This
-    still satisfies "nothing is lost on a crash" (each answer is durably stored
-    before moving on) with much less moving-part complexity; a background queue
-    with retry is a reasonable later upgrade if upload latency becomes an issue.
-- Verified end-to-end in a real browser (Playwright, real MediaRecorder via Chrome's
-  fake-device flags, actual presigned uploads to MinIO — not mocked): the full
-  candidate flow (landing → device check → record both questions → thank-you),
-  resuming correctly at question 2 after simulating a crash (with the countdown
-  continuing from the original deadline, not resetting), and the Phase 2 recruiter
-  flows (job creation, candidate creation, interview scheduling) — zero console
+- **Candidate interview room** (`/interview-room/:token`, isolated and lazy-loaded route
+  tree, no recruiter code/data reachable): landing → device check (camera/mic preview
+  and device pickers) → join a LiveKit room (publish-only) → one question at a time,
+  each recorded **server-side** by LiveKit Egress (start/stop through the API — nothing
+  is uploaded from the browser) → thank-you screen. A single whole-round countdown
+  starts on join and auto-submits on expiry. Reopening the link mid-round resumes at
+  the first unanswered question; a dropped connection shows a reconnect banner and the
+  interrupted answer is re-recorded.
+- **Recording playback**: the interview details / review screens play each question's
+  real recording (signed URLs, refreshed on expiry) and show its transcript once the
+  STT pipeline has produced it.
+- Verified end-to-end in a real browser (Playwright, Chrome's fake-device flags,
+  self-hosted LiveKit + Egress writing real MP4s to MinIO — not mocked): the full
+  candidate flow (landing → device check → join → record both questions →
+  thank-you), both answers landing as `uploaded` with real durations, transcription
+  enqueued after submit, and the recruiter page playing the recordings — zero console
   errors throughout.
 
 - **AI question generation**: in the job edit form, once a round is saved (has a real
