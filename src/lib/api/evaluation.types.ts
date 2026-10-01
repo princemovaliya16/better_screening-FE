@@ -24,12 +24,49 @@ export const EVALUATION_STATUS_LABELS: Record<EvaluationStatus, string> = {
   completed: 'Completed',
 };
 
-export interface CompetencyScores {
-  technicalSkills: number;
-  problemSolving: number;
+/** The six analysis categories — each scored 0–100 on its own (they don't add up to
+ * 100). Order here is display order. */
+export const SCORE_DIMENSIONS = [
+  { key: 'knowledge', label: 'Knowledge', hint: 'Correctness and depth on the role’s skills' },
+  { key: 'communication', label: 'Communication & speech', hint: 'Clarity, structure, fluency and pace' },
+  { key: 'relevance', label: 'Answer relevance', hint: 'How directly answers addressed the questions' },
+  { key: 'jobFit', label: 'Job fit', hint: 'Resume and answers vs. the job description' },
+  { key: 'problemSolving', label: 'Problem solving', hint: 'Reasoning, examples and trade-offs' },
+  { key: 'confidence', label: 'Confidence', hint: 'Inferred from speech pace and wording' },
+] as const;
+
+/** Labels for every category key, including ones used by evaluations stored before
+ * the six categories existed. */
+export const SCORE_LABELS: Record<string, string> = {
+  ...Object.fromEntries(SCORE_DIMENSIONS.map((d) => [d.key, d.label])),
+  technicalSkills: 'Technical skills',
+  culturalFit: 'Cultural fit',
+  experienceRelevance: 'Experience relevance',
+};
+
+/** Category key → 0–100. */
+export type CompetencyScores = Record<string, number>;
+
+/** Measured delivery, computed from the transcript timings (not judged by the AI). */
+export interface SpeechMetricsValues {
+  wordCount: number;
+  speakingSeconds: number;
+  recordingSeconds: number | null;
+  wordsPerMinute: number | null;
+  talkRatio: number | null;
+  longPauses: number;
+  responseDelaySeconds: number | null;
+}
+
+export interface SpeechMetrics {
+  overall: SpeechMetricsValues;
+  perQuestion: Record<string, SpeechMetricsValues>;
+}
+
+export interface QuestionDimensionScores {
+  knowledge: number;
   communication: number;
-  culturalFit: number;
-  experienceRelevance: number;
+  relevance: number;
 }
 
 export interface InterviewSummary {
@@ -42,6 +79,9 @@ export interface InterviewSummary {
   observations: string;
   communicationNote: string;
   competencyScores: CompetencyScores;
+  /** One-line reason per category; null on evaluations made before the six categories. */
+  scoreReasons?: Record<string, string> | null;
+  speechMetrics?: SpeechMetrics | null;
 }
 
 export interface InterviewQuestionAnalysis {
@@ -49,6 +89,7 @@ export interface InterviewQuestionAnalysis {
   interviewQuestionId: string;
   score: number;
   feedback: string;
+  dimensionScores?: QuestionDimensionScores | null;
 }
 
 export interface EvaluationView {

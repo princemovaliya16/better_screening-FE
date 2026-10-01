@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -25,6 +25,8 @@ import {
   type CandidateStage,
 } from '@/lib/api/candidates.types';
 import { emailComposerApi } from '@/lib/api/email-composer.api';
+import { evaluationApi } from '@/lib/api/evaluation.api';
+import { EVALUATION_STATUS_LABELS } from '@/lib/api/evaluation.types';
 import { EMAIL_TYPE_LABELS, type EmailType } from '@/lib/api/email-composer.types';
 import { interviewsApi } from '@/lib/api/interviews.api';
 import { INTERVIEW_STATUS_LABELS, type Interview } from '@/lib/api/interviews.types';
@@ -32,6 +34,7 @@ import type { RoundTemplate } from '@/lib/api/jobs.types';
 import { queryKeys } from '@/lib/api/queryKeys';
 import { EmailComposerModal } from './EmailComposerModal';
 import { ScheduleInterviewModal } from '@/features/interviews/ScheduleInterviewModal';
+import { AiAnalysisPanel } from '@/features/interviews/AiAnalysisPanel';
 
 const STAGE_TONE: Record<CandidateStage, 'sky' | 'amber' | 'brand' | 'violet' | 'fuchsia' | 'green' | 'rose'> = {
   applied: 'sky',
@@ -51,22 +54,6 @@ const TAB_LABELS: Record<Tab, string> = {
   interviews: 'Interviews',
   evaluation: 'AI Evaluation',
   resume: 'Resume',
-};
-
-/**
- * Placeholder AI evaluation breakdown, shown as static frontend data until the real
- * AI evaluation engine is wired up — then this should be replaced with data fetched
- * from the backend (per-candidate, per-round).
- */
-const STATIC_AI_EVALUATION = {
-  recommendation: 'Hire',
-  competencies: [
-    { label: 'Technical skills', value: 82 },
-    { label: 'Problem solving', value: 81 },
-    { label: 'Communication', value: 69 },
-    { label: 'Confidence', value: 69 },
-    { label: 'Job fit', value: 73 },
-  ],
 };
 
 const shortRoundName = (name: string) => name.replace(' Interview', '').replace(' / Culture', '');
@@ -268,6 +255,18 @@ export function CandidateDetailsPage() {
     enabled: !!id && tab === 'resume' && !!candidate?.resumePath,
     staleTime: 10 * 60 * 1000,
     retry: false,
+  });
+
+  // The AI Evaluation tab shows the real analysis of every submitted round.
+  const submittedInterviews = (interviews ?? [])
+    .filter((i) => i.status === 'completed' || i.status === 'pending_evaluation')
+    .sort((a, b) => a.roundIndex - b.roundIndex);
+  const evaluationQueries = useQueries({
+    queries: submittedInterviews.map((i) => ({
+      queryKey: queryKeys.interviewEvaluation(organization?.id ?? '', i.id),
+      queryFn: () => evaluationApi.get(i.id),
+      enabled: tab === 'evaluation',
+    })),
   });
 
   const invalidateCandidate = () =>
@@ -888,37 +887,51 @@ export function CandidateDetailsPage() {
       )}
 
       {tab === 'evaluation' && (
-        <Card className="p-5">
-          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-            <h2 className="font-display font-bold text-ink-900 text-lg">AI Evaluation</h2>
-            <Badge tone="slate">Sample data · evaluation engine coming soon</Badge>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-[auto_1fr] gap-8">
-            <div className="flex flex-col items-center gap-2 md:pr-8 md:border-r md:border-ink-100">
-              <Ring value={candidate.overallScore ?? 74} size={120} stroke={9} />
-              <p className="font-display font-bold text-ink-900">{STATIC_AI_EVALUATION.recommendation}</p>
-              <p className="text-[12px] text-ink-400 text-center">Overall AI fit score</p>
-              <Badge tone="violet">AI evaluated across 1 round</Badge>
-            </div>
-            <div>
-              <h3 className="font-display font-bold text-ink-900 mb-1">Competency breakdown</h3>
-              <p className="text-[12px] text-ink-400 mb-4">How the candidate scored across key dimensions</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
-                {STATIC_AI_EVALUATION.competencies.map((c) => (
-                  <div key={c.label}>
-                    <div className="flex items-center justify-between text-[13px] mb-1.5">
-                      <span className="text-ink-600">{c.label}</span>
-                      <span className="font-bold text-ink-900">{c.value}%</span>
+        <div className="space-y-5">
+          {submittedInterviews.length === 0 ? (
+            <Card className="p-8 text-center">
+              <p className="font-semibold text-ink-900">No AI evaluation yet</p>
+              <p className="text-sm text-ink-500 mt-1">
+                The AI analysis appears here once {candidate.name.split(' ')[0]} completes an interview round.
+              </p>
+            </Card>
+          ) : (
+            submittedInterviews.map((iv, idx) => {
+              const query = evaluationQueries[idx];
+              const evaluation = query?.data;
+              const summary = evaluation?.status === 'completed' ? evaluation.summary : undefined;
+              return (
+                <Card key={iv.id} className="p-5">
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg ai-gradient grid place-items-center text-white text-sm">✨</div>
+                      <h2 className="font-display font-bold text-ink-900 text-lg">AI Evaluation · {iv.roundName}</h2>
                     </div>
-                    <div className="h-1.5 rounded-full bg-ink-100 overflow-hidden">
-                      <div className="h-full rounded-full bg-brand-500" style={{ width: `${c.value}%` }} />
-                    </div>
+                    <Link
+                      to={`/app/interviews/${iv.id}`}
+                      className="text-[13px] font-medium text-brand-600 hover:text-brand-700"
+                    >
+                      Open interview →
+                    </Link>
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </Card>
+                  {summary ? (
+                    <AiAnalysisPanel summary={summary} />
+                  ) : (
+                    <p className="text-[13px] text-ink-500">
+                      {query?.isLoading
+                        ? 'Loading evaluation…'
+                        : query?.isError
+                          ? 'Could not load the evaluation.'
+                          : evaluation
+                            ? `${EVALUATION_STATUS_LABELS[evaluation.status]} — the analysis will appear here when it's ready.`
+                            : 'The analysis will appear here when it is ready.'}
+                    </p>
+                  )}
+                </Card>
+              );
+            })
+          )}
+        </div>
       )}
 
       {tab === 'resume' && (
