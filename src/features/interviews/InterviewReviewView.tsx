@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Badge, Button, Card, Ring } from '@/components/ui';
+import { Badge, Button, Card } from '@/components/ui';
 import { useOrg } from '@/context/OrgContext';
 import { EmailComposerModal } from '@/features/candidates/EmailComposerModal';
 import { candidatesApi } from '@/lib/api/candidates.api';
@@ -13,7 +13,8 @@ import {
 } from '@/lib/api/candidates.types';
 import type { EvaluationView } from '@/lib/api/evaluation.types';
 import type { Interview, InterviewRecording } from '@/lib/api/interviews.types';
-import { buildInterviewReview } from './interviewReview';
+import { AiAnalysisPanel, QuestionScoreChips } from './AiAnalysisPanel';
+import { buildReviewQuestions } from './interviewReview';
 import { RecordingPlayer } from './RecordingPlayer';
 
 /**
@@ -39,7 +40,8 @@ export function InterviewReviewView({
   const [emailOpen, setEmailOpen] = useState(false);
   const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
 
-  const review = buildInterviewReview(interview, evaluation, recordings);
+  const questions = buildReviewQuestions(interview, evaluation, recordings);
+  const summary = evaluation?.status === 'completed' ? evaluation.summary : undefined;
   const recordedIds = new Set((recordings ?? []).map((r) => r.questionId));
   const candidate = interview.candidate;
   const decision = candidate ? roundDecisionState(candidate.stage, interview.type) : 'pending';
@@ -68,59 +70,19 @@ export function InterviewReviewView({
           onUrlExpired={onRecordingUrlExpired}
         />
 
-        {/* AI summary */}
+        {/* AI analysis — only ever the real evaluation */}
         <Card className="p-5">
-          <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg ai-gradient grid place-items-center text-white text-sm">✨</div>
-              <h2 className="font-display font-bold text-ink-900 text-[17px]">AI interview summary</h2>
-            </div>
-            <div className="flex items-center gap-2">
-              {review.isSample && <Badge tone="slate">Sample data · evaluation engine coming soon</Badge>}
-              <Badge tone="brand" dot>
-                {review.recommendationLabel}
-              </Badge>
-            </div>
+          <div className="flex items-center gap-2.5 mb-4">
+            <div className="w-8 h-8 rounded-lg ai-gradient grid place-items-center text-white text-sm">✨</div>
+            <h2 className="font-display font-bold text-ink-900 text-[17px]">AI interview analysis</h2>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-[220px_1fr] gap-4">
-            <div className="rounded-xl border border-ink-100 p-5 grid place-items-center">
-              <div className="text-center">
-                <Ring value={review.overallScore} size={92} stroke={7} />
-                <p className="text-[12px] text-ink-400 mt-2">Overall score</p>
-              </div>
-            </div>
-            <div className="rounded-xl bg-ink-50/70 p-4">
-              <p className="text-[11px] font-semibold tracking-wide text-ink-400 mb-2">OBSERVATIONS</p>
-              <p className="text-[13px] text-ink-700 leading-relaxed">{review.observations}</p>
-              <p className="text-[13px] text-ink-700 leading-relaxed mt-3">
-                <span className="font-semibold">Communication:</span> {review.communicationNote}
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 mt-5">
-            <div>
-              <p className="text-[11px] font-semibold tracking-wide text-emerald-600 mb-2">⊘ STRENGTHS</p>
-              <ul className="space-y-1.5">
-                {review.strengths.map((s, i) => (
-                  <li key={i} className="text-[13px] text-ink-700 flex gap-2">
-                    <span className="text-emerald-500">✓</span> {s}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold tracking-wide text-amber-600 mb-2">⚠ AREAS TO EXPLORE</p>
-              <ul className="space-y-1.5">
-                {review.weaknesses.map((s, i) => (
-                  <li key={i} className="text-[13px] text-ink-700 flex gap-2">
-                    <span className="text-amber-500">•</span> {s}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
+          {summary ? (
+            <AiAnalysisPanel summary={summary} />
+          ) : (
+            <p className="text-[13px] text-ink-500">
+              The AI analysis isn't available for this interview yet.
+            </p>
+          )}
         </Card>
 
         {/* Per-question analysis */}
@@ -129,18 +91,16 @@ export function InterviewReviewView({
             <div>
               <h2 className="font-display font-bold text-ink-900 text-[17px]">AI question analysis</h2>
               <p className="text-[12px] text-ink-400 mt-0.5">
-                {review.questions.length} question{review.questions.length === 1 ? '' : 's'} · scored individually
+                {questions.length} question{questions.length === 1 ? '' : 's'} · scored individually
               </p>
             </div>
-            {review.hasSampleQuestions ? (
-              <Badge tone="slate">Sample questions</Badge>
-            ) : (
-              review.hasSampleAnswers && <Badge tone="slate">Sample answers</Badge>
-            )}
           </div>
           <div className="mt-4">
+            {questions.length === 0 && (
+              <p className="text-[13px] text-ink-500">No questions were configured for this round.</p>
+            )}
             <div className="space-y-3">
-              {review.questions.map((q, i) => (
+              {questions.map((q, i) => (
                 <div
                   key={q.id}
                   className={`rounded-xl border p-4 ${
@@ -155,19 +115,25 @@ export function InterviewReviewView({
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-semibold text-ink-800 mb-2">{q.questionText}</p>
                       <div className="rounded-lg bg-ink-50/70 p-3">
-                        <p className="text-[11px] font-semibold tracking-wide text-ink-400 mb-1">
-                          {review.hasSampleAnswers ? 'CANDIDATE ANSWER' : 'TRANSCRIPT'}
-                        </p>
+                        <p className="text-[11px] font-semibold tracking-wide text-ink-400 mb-1">TRANSCRIPT</p>
                         <p className="text-[13px] text-ink-700">{q.answer}</p>
                       </div>
-                      <p className="text-[12.5px] text-brand-700 mt-2.5">
-                        <span className="font-semibold">✨ AI feedback:</span> {q.feedback}
-                      </p>
+                      {q.dimensionScores && (
+                        <div className="mt-2.5">
+                          <QuestionScoreChips dimensionScores={q.dimensionScores} />
+                        </div>
+                      )}
+                      {q.feedback && (
+                        <p className="text-[12.5px] text-brand-700 mt-2.5">
+                          <span className="font-semibold">✨ AI feedback:</span> {q.feedback}
+                        </p>
+                      )}
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="font-display font-extrabold text-brand-600 text-[19px] tabular-nums">{q.score}</p>
-                      <p className="text-[11px] text-ink-400">/ 100</p>
-                    </div>
+                    {q.score != null && (
+                      <div className="text-right shrink-0">
+                        <p className="font-display font-extrabold text-brand-600 text-[19px] tabular-nums">{q.score}%</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -176,7 +142,7 @@ export function InterviewReviewView({
         </Card>
       </div>
 
-      {/* Decision + scores */}
+      {/* Decision */}
       <div className="space-y-5 lg:sticky lg:top-4">
         {candidate && (
           <Card className="p-5">
@@ -226,25 +192,6 @@ export function InterviewReviewView({
           </Card>
         )}
 
-        <Card className="p-5">
-          <h2 className="font-display font-bold text-ink-900 text-[17px] mb-4">Competency scores</h2>
-          <div className="space-y-3.5">
-            {review.competencies.map((c) => (
-              <div key={c.key}>
-                <div className="flex items-center justify-between text-[13px] mb-1.5">
-                  <span className="text-ink-600">{c.label}</span>
-                  <span className="font-bold text-ink-900 tabular-nums">{c.value}%</span>
-                </div>
-                <div className="h-1.5 rounded-full bg-ink-100 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${c.value < 65 ? 'bg-amber-400' : 'bg-brand-500'}`}
-                    style={{ width: `${c.value}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
       </div>
 
       {candidate && (
